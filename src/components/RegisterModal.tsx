@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Mail, Lock, User, Phone, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface RegisterModalProps {
   isOpen: boolean;
@@ -19,6 +19,12 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (!isSupabaseConfigured) {
+      setError('Supabase is not configured. Please set your Supabase URL and Publishable Key in the application settings.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -45,7 +51,11 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
       }
     } catch (err: any) {
       console.error('Registration error:', err);
-      setError(err.message || 'An error occurred during registration.');
+      let message = err.message || 'An error occurred during registration.';
+      if (message === 'Failed to fetch') {
+        message = 'Could not connect to Supabase. Please check your Supabase URL and ensure it is correct and accessible.';
+      }
+      setError(message);
     } finally {
       setLoading(false);
     }

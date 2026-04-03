@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "members": {
+      "title": "Member Profile",
+      "description": "Guest profile information and loyalty status.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "full_name": { "type": "string" },
+        "phone": { "type": "string" },
+        "nationality": { "type": "string" },
+        "dob": { "type": "string", "format": "date" },
+        "avatar_url": { "type": "string" },
+        "loyalty_tier": { "type": "string", "enum": ["Explorer", "Trekker", "Summit", "Pinnacle"] },
+        "points_balance": { "type": "number" },
+        "onboarding_completed": { "type": "boolean" },
+        "preferred_language": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "full_name"]
+    },
+    "member_preferences": {
+      "title": "Member Preferences",
+      "description": "Captured preferences during onboarding.",
+      "type": "object",
+      "properties": {
+        "member_id": { "type": "string" },
+        "activities": { "type": "array", "items": { "type": "string" } },
+        "dining": { "type": "array", "items": { "type": "string" } },
+        "wellness": { "type": "array", "items": { "type": "string" } },
+        "budget_tier": { "type": "string", "enum": ["Low", "Mid", "Premium", "Luxury"] },
+        "trip_purpose": { "type": "string" },
+        "ai_segment": { "type": "string" },
+        "ai_confidence": { "type": "number" },
+        "ai_segment_updated_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "services": {
+      "title": "Service",
+      "description": "Available rooms, activities, and wellness services.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "category_id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "base_price": { "type": "number" },
+        "duration_minutes": { "type": "number" },
+        "max_capacity": { "type": "number" },
+        "is_bookable": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["Active", "Draft", "Archived"] },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "created_by_admin_id": { "type": "string" }
+      }
+    },
+    "bookings": {
+      "title": "Booking",
+      "description": "Guest reservations for services.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "member_id": { "type": "string" },
+        "service_id": { "type": "string" },
+        "start_date": { "type": "string", "format": "date-time" },
+        "end_date": { "type": "string", "format": "date-time" },
+        "guest_count": { "type": "number" },
+        "base_price": { "type": "number" },
+        "ai_price": { "type": "number" },
+        "final_price": { "type": "number" },
+        "discount_applied": { "type": "number" },
+        "status": { "type": "string", "enum": ["Confirmed", "Pending", "Cancelled", "Completed"] },
+        "payment_status": { "type": "string", "enum": ["Paid", "Unpaid", "Refunded"] },
+        "payment_ref": { "type": "string" },
+        "cancellation_reason": { "type": "string" }
+      }
+    },
+    "pricing_rules": {
+      "title": "Pricing Rule",
+      "description": "Dynamic pricing adjustments based on occupancy, season, or events.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "type": { "type": "string", "enum": ["occupancy", "seasonal", "event"] },
+        "condition_value": { "type": ["number", "string"] },
+        "adjustment_type": { "type": "string", "enum": ["percentage", "fixed"] },
+        "adjustment_value": { "type": "number" },
+        "is_active": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "type", "adjustment_type", "adjustment_value"]
+    }
+  },
+  "firestore": {
+    "/members/{memberId}": {
+      "schema": "members",
+      "description": "User profiles"
+    },
+    "/members/{memberId}/preferences/current": {
+      "schema": "member_preferences",
+      "description": "User preferences"
+    },
+    "/services/{serviceId}": {
+      "schema": "services",
+      "description": "Service catalog"
+    },
+    "/bookings/{bookingId}": {
+      "schema": "bookings",
+      "description": "Reservations"
+    },
+    "/pricing_rules/{ruleId}": {
+      "schema": "pricing_rules",
+      "description": "Dynamic pricing rules"
+    }
+  }
+}

@@ -1,0 +1,128 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: members
+    // Document ID: {memberId} (matches auth.uid)
+    // Fields:
+    //   - email: string (required, email format)
+    //   - full_name: string (required)
+    //   - loyalty_tier: string (Explorer, Trekker, Summit, Pinnacle)
+    //   - points_balance: number
+    //   - onboarding_completed: bool
+    //
+    // Collection: admin_users
+    // Document ID: {userId}
+    // Fields:
+    //   - role: string (admin)
+    //
+    // Collection: services
+    // Document ID: {serviceId}
+    // Fields:
+    //   - name: string (required)
+    //   - base_price: number
+    //   - status: string (Active, Draft, Archived)
+    //
+    // Collection: bookings
+    // Document ID: {bookingId}
+    // Fields:
+    //   - member_id: string (required, matches auth.uid)
+    //   - service_id: string (required)
+    //   - status: string (Confirmed, Pending, Cancelled, Completed)
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "bruhtech145@gmail.com" ||
+         exists(/databases/$(database)/documents/admin_users/$(request.auth.uid)));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // Member Profiles
+    match /members/{memberId} {
+      function isValidMember(data) {
+        return data.email is string && isValidEmail(data.email) &&
+               data.full_name is string && data.full_name.size() > 0 && data.full_name.size() < 100 &&
+               data.loyalty_tier in ['Explorer', 'Trekker', 'Summit', 'Pinnacle'] &&
+               data.points_balance is number && data.points_balance >= 0 &&
+               data.onboarding_completed is bool;
+      }
+
+      function isMemberFieldUnchanged(fields) {
+        return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+      }
+
+      allow read: if isOwner(memberId) || isAdmin();
+      allow create: if isOwner(memberId) && isValidMember(request.resource.data) &&
+                    request.resource.data.loyalty_tier == 'Explorer' &&
+                    request.resource.data.points_balance == 0 &&
+                    request.resource.data.onboarding_completed == false;
+      allow update: if isOwner(memberId) && isValidMember(request.resource.data) && 
+                    request.resource.data.email == resource.data.email &&
+                    (isAdmin() || isMemberFieldUnchanged(['loyalty_tier', 'points_balance']));
+    }
+
+    // Admin Users
+    match /admin_users/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Member Preferences
+    match /members/{memberId}/preferences/current {
+      allow read: if isOwner(memberId) || isAdmin();
+      allow write: if isOwner(memberId);
+    }
+
+    // Services
+    match /services/{serviceId} {
+      allow read: if true; // Publicly readable for browsing
+      allow write: if isAdmin();
+    }
+
+    // Bookings
+    match /bookings/{bookingId} {
+      function isValidBooking(data) {
+        return data.member_id == request.auth.uid &&
+               data.service_id is string &&
+               data.status in ['Confirmed', 'Pending', 'Cancelled', 'Completed'];
+      }
+
+      allow read: if isAuthenticated() && (resource.data.member_id == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidBooking(request.resource.data);
+      allow update: if isAuthenticated() && (resource.data.member_id == request.auth.uid || isAdmin()) &&
+                    isValidBooking(request.resource.data);
+    }
+
+    // Pricing Rules
+    match /pricing_rules/{ruleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Default Deny
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

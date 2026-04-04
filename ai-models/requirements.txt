@@ -1,0 +1,11 @@
+# Revenue Generation Engine
+prophet
+pandas
+
+plotly
+
+# Customer Segmentation
+scikit-learn
+
+# AI Allergy Agent
+openai

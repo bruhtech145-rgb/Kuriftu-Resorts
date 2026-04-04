@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-  Users, 
-  Calendar, 
-  MapPin, 
-  TrendingUp, 
-  Bell, 
-  Search, 
-  LogOut, 
-  Settings, 
-  ChevronRight, 
-  LayoutDashboard, 
-  Hotel, 
-  Utensils, 
+import {
+  Users,
+  Calendar,
+  MapPin,
+  TrendingUp,
+  Bell,
+  Search,
+  LogOut,
+  Settings,
+  ChevronRight,
+  LayoutDashboard,
+  Hotel,
+  Utensils,
   Waves,
   Menu,
   X,
@@ -25,23 +25,29 @@ import {
   Zap,
   Clock,
   Globe,
-  RefreshCw
+  RefreshCw,
+  DoorOpen,
+  Plus,
+  Edit2,
+  Trash2
 } from 'lucide-react';
-import { 
-  LineChart, 
-  Line, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  AreaChart, 
-  Area 
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  AreaChart,
+  Area
 } from 'recharts';
 import { supabase } from '../lib/supabase';
 import { runAdminAnalysis, triggerAgentCron, dismissAlert, DashboardAnalysis } from '../lib/admin-agent';
 import { AdminNotifications, AIInsightsPanel, AdminAIChat } from './AdminAIPanel';
 import { Sparkles as SparklesIcon } from 'lucide-react';
+import { Room, Booking } from '../types';
+import { format, addDays } from 'date-fns';
 
 interface AdminDashboardProps {
   onLogout: () => void;
@@ -52,6 +58,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState('ai-insights');
   const [guests, setGuests] = useState<any[]>([]);
   const [loadingGuests, setLoadingGuests] = useState(false);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loadingRooms, setLoadingRooms] = useState(false);
+  const [showRoomForm, setShowRoomForm] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [isPredicting, setIsPredicting] = useState(false);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loadingBookings, setLoadingBookings] = useState(false);
+  const [roomFormData, setRoomFormData] = useState<Partial<Room>>({});
+
+  // Calendar States
+  const [calendarStartDate, setCalendarStartDate] = useState(format(addDays(new Date(), 1), 'yyyy-MM-dd'));
+  const [calendarTimeframe, setCalendarTimeframe] = useState<'week' | 'month'>('week');
+  const [isCalendarPredicting, setIsCalendarPredicting] = useState(false);
+  const [calendarDaysData, setCalendarDaysData] = useState<any[]>([]);
 
   // New state variables for dashboard data
   const [trendData, setTrendData] = useState<any[]>([]);
@@ -139,8 +159,179 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   useEffect(() => {
     if (activeTab === 'guests') {
       fetchGuests();
+    } else if (activeTab === 'rooms') {
+      fetchRooms();
+    } else if (activeTab === 'bookings') {
+      fetchBookings();
     }
   }, [activeTab]);
+
+  const fetchRooms = async () => {
+    setLoadingRooms(true);
+    try {
+      const { data, error } = await supabase.from('rooms').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      setRooms(data || []);
+    } catch (error) {
+      console.error('Error fetching rooms:', error);
+    } finally {
+      setLoadingRooms(false);
+    }
+  };
+
+  const handleSaveRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingRoom) {
+        const { error } = await supabase.from('rooms').update(roomFormData).eq('id', editingRoom.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('rooms').insert([roomFormData]);
+        if (error) throw error;
+      }
+      setShowRoomForm(false);
+      setEditingRoom(null);
+      setRoomFormData({});
+      fetchRooms();
+    } catch (error) {
+      console.error('Error saving room:', error);
+    }
+  };
+
+  const handleDeleteRoom = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this room?')) return;
+    try {
+      const { error } = await supabase.from('rooms').delete().eq('id', id);
+      if (error) throw error;
+      fetchRooms();
+    } catch (error) {
+      console.error('Error deleting room:', error);
+    }
+  };
+
+  const handleApprovePrice = async (roomId: string, suggestedPrice: number, roomType: string) => {
+    try {
+      // 1. Update ALL rooms of the same type to maintain consistency
+      const { error: roomError } = await supabase
+        .from('rooms')
+        .update({ 
+          price: suggestedPrice, 
+          suggested_price: null 
+        })
+        .eq('type', roomType);
+
+      if (roomError) throw roomError;
+
+      // 2. Update the corresponding service base_price for consistency
+      const { error: serviceError } = await supabase
+        .from('services')
+        .update({ base_price: suggestedPrice })
+        .eq('name', roomType);
+
+      if (serviceError) {
+        console.warn('Could not update service base_price:', serviceError);
+      }
+
+      await fetchRooms();
+      alert(`AI Price Approved!\nAll rooms within '${roomType}' category have been updated to ETB ${suggestedPrice}.`);
+    } catch (error) {
+      console.error('Error approving price:', error);
+      alert('Failed to approve price.');
+    }
+  };
+
+  const fetchBookings = async () => {
+    setLoadingBookings(true);
+    try {
+      const { data, error } = await supabase
+        .from('bookings')
+        .select('*')
+        .order('start_date', { ascending: false });
+
+      if (error) throw error;
+      setBookings(data || []);
+    } catch (error) {
+      console.error('Error fetching bookings:', error);
+    } finally {
+      setLoadingBookings(false);
+    }
+  };
+
+  const renderBookings = () => (
+    <div className="space-y-8">
+      <div className="flex items-center justify-between bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+        <div>
+          <h3 className="text-xl font-bold text-slate-900">All Bookings</h3>
+          <p className="text-sm text-slate-400">View and manage all guest bookings</p>
+        </div>
+        <button
+          onClick={fetchBookings}
+          disabled={loadingBookings}
+          className="text-[#0066ff] hover:bg-blue-50 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={18} className={loadingBookings ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      </div>
+
+      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50/50">
+                <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">ID</th>
+                <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Dates</th>
+                <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Guests</th>
+                <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Price</th>
+                <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Status</th>
+                <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Payment</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {loadingBookings ? (
+                <tr>
+                  <td colSpan={6} className="px-8 py-12 text-center text-slate-400 font-bold">
+                    <RefreshCw size={24} className="animate-spin text-[#0066ff] mx-auto mb-2" /> Loading bookings...
+                  </td>
+                </tr>
+              ) : bookings.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-8 py-12 text-center text-slate-500">No bookings found.</td>
+                </tr>
+              ) : (
+                bookings.map((booking) => (
+                  <tr key={booking.id} className="hover:bg-slate-50/50 transition-colors group">
+                    <td className="px-8 py-6 font-mono text-xs text-slate-400">{booking.id.substring(0, 8)}...</td>
+                    <td className="px-8 py-6">
+                      <div className="font-bold text-slate-900">{new Date(booking.start_date).toLocaleDateString()}</div>
+                      <div className="text-xs text-slate-500">to {new Date(booking.end_date).toLocaleDateString()}</div>
+                    </td>
+                    <td className="px-8 py-6 text-slate-500">{booking.guest_count}</td>
+                    <td className="px-8 py-6 font-bold text-slate-900">${booking.final_price}</td>
+                    <td className="px-8 py-6">
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        booking.status === 'Confirmed' ? 'bg-green-100 text-green-600' :
+                        booking.status === 'Pending' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
+                      }`}>
+                        {booking.status}
+                      </span>
+                    </td>
+                    <td className="px-8 py-6">
+                      <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                        booking.payment_status === 'Paid' ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {booking.payment_status}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 
   const fetchGuests = async () => {
     setLoadingGuests(true);
@@ -149,7 +340,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         .from('profiles')
         .select('*')
         .order('created_at', { ascending: false });
-        
+
       if (error) throw error;
       setGuests(data || []);
     } catch (error) {
@@ -166,23 +357,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     { label: 'Revenue Projection', value: '$45.2K', change: '+15.7%', icon: <TrendingUp size={24} />, color: 'bg-purple-500' },
   ];
 
-  const calendarDays = Array.from({ length: 18 }, (_, i) => {
-    const day = i + 1;
-    let price = 250;
-    let discount = null;
-    let demand = 'Medium Demand';
-    
-    if ([1, 2, 3, 6, 7, 8, 9].includes(day)) {
-      price = 200;
-      discount = '15% OFF';
-      demand = 'Low Demand';
-    } else if ([4, 5, 11, 12, 18].includes(day)) {
-      price = 320;
-      demand = 'High Demand';
-    }
-    
-    return { day, price, discount, demand };
-  });
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -254,7 +428,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
                   <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
                   />
                   <Area type="monotone" dataKey="current" stroke="#0066ff" strokeWidth={3} fillOpacity={1} fill="url(#colorCurrent)" />
@@ -433,6 +607,67 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     </div>
   );
 
+  const handleGenerateCalendarPrediction = async () => {
+    setIsCalendarPredicting(true);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 800)); // Simulate AI computation
+
+      const daysToGenerate = calendarTimeframe === 'month' ? 30 : 7;
+      const start = new Date(calendarStartDate);
+      const newDays = [];
+
+      let basePrice = 250;
+
+      for (let i = 0; i < daysToGenerate; i++) {
+        const currentDate = addDays(start, i);
+        const dayOfWeek = currentDate.getDay();
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        
+        let price = basePrice;
+        let demand = 'Medium Demand';
+        let discount = null;
+
+        if (isWeekend) {
+          price = Math.round(basePrice * 1.15); 
+          demand = 'High Demand';
+        }
+
+        if (Math.random() > 0.85) {
+          price = Math.round(price * 1.30); 
+          demand = 'High Demand';
+        }
+
+        if (!isWeekend && Math.random() > 0.80) {
+          price = Math.round(basePrice * 0.85); 
+          demand = 'Low Demand';
+          discount = '15% OFF';
+        }
+
+        newDays.push({
+          date: currentDate,
+          day: format(currentDate, 'd'),
+          dayName: format(currentDate, 'EEE'),
+          fullDate: format(currentDate, 'MMM d, yyyy'),
+          price,
+          demand,
+          discount
+        });
+      }
+
+      setCalendarDaysData(newDays);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsCalendarPredicting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'pricing-calendar' && calendarDaysData.length === 0) {
+      handleGenerateCalendarPrediction();
+    }
+  }, [activeTab]);
+
   const renderPricingCalendar = () => (
     <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
@@ -460,44 +695,79 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         </div>
       </div>
 
-      <div className="mb-8 flex items-center justify-between">
-        <h4 className="text-2xl font-bold text-slate-900">April 2026</h4>
-        <div className="flex gap-2">
-          <button className="p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition-colors">
-            <ChevronRight size={20} className="rotate-180" />
-          </button>
-          <button className="p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition-colors">
-            <ChevronRight size={20} />
-          </button>
+      <div className="mb-8 flex flex-col sm:flex-row items-center gap-4 justify-between bg-slate-50 p-4 rounded-3xl border border-slate-100">
+        <div className="flex items-center gap-4 w-full sm:w-auto">
+          <input 
+            type="date"
+            value={calendarStartDate}
+            onChange={(e) => setCalendarStartDate(e.target.value)}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 text-sm font-bold text-slate-900"
+          />
+          <select 
+            value={calendarTimeframe}
+            onChange={(e) => setCalendarTimeframe(e.target.value as 'week' | 'month')}
+            className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 text-sm font-bold text-slate-900 appearance-none pr-10"
+            style={{ backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1em' }}
+          >
+            <option value="week">1-Week Forecast</option>
+            <option value="month">1-Month Forecast</option>
+          </select>
         </div>
+        <button 
+          onClick={handleGenerateCalendarPrediction}
+          disabled={isCalendarPredicting}
+          className="w-full sm:w-auto bg-[#0066ff] hover:bg-blue-600 text-white px-6 py-2 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+        >
+          <Zap size={16} className={isCalendarPredicting ? 'animate-pulse' : ''} />
+          {isCalendarPredicting ? 'Predicting...' : 'Generate Forecast'}
+        </button>
       </div>
 
-      <div className="grid grid-cols-7 gap-px bg-slate-100 border border-slate-100 rounded-3xl overflow-hidden">
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-          <div key={day} className="bg-slate-50 p-4 text-center text-xs font-bold text-slate-400 uppercase tracking-widest">
-            {day}
-          </div>
-        ))}
-        {calendarDays.map((day, i) => (
-          <div key={i} className="bg-white p-6 min-h-[120px] hover:bg-slate-50 transition-colors group cursor-pointer relative">
-            <span className="text-sm font-bold text-slate-400 group-hover:text-slate-900 transition-colors">{day.day}</span>
-            <div className="mt-4">
-              <p className="text-xl font-bold text-slate-900">${day.price}</p>
-              {day.discount && (
-                <p className="text-[10px] font-bold text-blue-500 mt-1">{day.discount}</p>
-              )}
+      {isCalendarPredicting ? (
+         <div className="py-20 flex flex-col items-center justify-center space-y-4">
+            <RefreshCw size={32} className="animate-spin text-[#0066ff]" />
+            <p className="text-slate-500 font-bold">Running Dynamic Prophet Model...</p>
+         </div>
+      ) : (
+        <div className="grid grid-cols-7 gap-px bg-slate-100 border border-slate-100 rounded-3xl overflow-hidden">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+            <div key={day} className="bg-white p-4 text-center text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50">
+              {day}
             </div>
-            <div className={`absolute bottom-4 right-4 w-2 h-2 rounded-full ${
-              day.demand === 'High Demand' ? 'bg-red-500' : 
-              day.demand === 'Medium Demand' ? 'bg-amber-500' : 'bg-green-500'
-            }`} />
-          </div>
-        ))}
-        {/* Fill remaining empty cells */}
-        {Array.from({ length: 10 }).map((_, i) => (
-          <div key={`empty-${i}`} className="bg-slate-50/30 p-6 min-h-[120px]" />
-        ))}
-      </div>
+          ))}
+          
+          {/* Fill beginning empty cells */}
+          {calendarDaysData.length > 0 && Array.from({ length: new Date(calendarDaysData[0].date).getDay() }).map((_, i) => (
+            <div key={`empty-start-${i}`} className="bg-slate-50/30 p-6 min-h-[120px]" />
+          ))}
+
+          {calendarDaysData.map((day, i) => (
+            <div key={i} className="bg-white p-6 min-h-[120px] hover:bg-slate-50 transition-colors group cursor-pointer relative">
+              <span className="text-sm font-bold text-slate-400 group-hover:text-slate-900 transition-colors">{day.day}</span>
+              <div className="mt-4">
+                <p className="text-xl font-bold text-slate-900">${day.price}</p>
+                {day.discount && (
+                  <p className="text-[10px] font-bold text-blue-500 mt-1">{day.discount}</p>
+                )}
+              </div>
+              <div className={`absolute bottom-4 right-4 w-2 h-2 rounded-full ${day.demand === 'High Demand' ? 'bg-red-500' :
+                  day.demand === 'Medium Demand' ? 'bg-amber-500' : 'bg-green-500'
+                }`} />
+            </div>
+          ))}
+          
+          {/* Fill remaining empty cells */}
+          {calendarDaysData.length > 0 && (() => {
+             const startPadding = new Date(calendarDaysData[0].date).getDay();
+             const totalCells = startPadding + calendarDaysData.length;
+             const neededRows = Math.ceil(totalCells / 7);
+             const remainingCells = (neededRows * 7) - totalCells;
+             return Array.from({ length: remainingCells }).map((_, i) => (
+               <div key={`empty-end-${i}`} className="bg-slate-50/30 p-6 min-h-[120px]" />
+             ));
+          })()}
+        </div>
+      )}
     </div>
   );
 
@@ -602,8 +872,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
           <h3 className="text-xl font-bold text-slate-900">Registered Guests</h3>
           <p className="text-sm text-slate-400">Manage all registered users from Supabase</p>
         </div>
-        <button 
-          onClick={fetchGuests} 
+        <button
+          onClick={fetchGuests}
           disabled={loadingGuests}
           className="text-[#0066ff] hover:bg-blue-50 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
         >
@@ -663,10 +933,198 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     </div>
   );
 
+  const handleRunAIPrediction = async () => {
+    setIsPredicting(true);
+    try {
+      // Simulate calling ai-models/dynamic-price-predictor.py
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
+      const updates = rooms.map(room => {
+        const demandMultiplier = 1.0 + Math.random() * 0.2; 
+        const holidayMultiplier = Math.random() > 0.8 ? 1.2 : 1.0; 
+        const suggested = Math.round(room.price * demandMultiplier * holidayMultiplier);
+        return {
+          id: room.id,
+          suggested_price: suggested
+        };
+      });
+
+      // Sequential update to Supabase (in a real app, do an RPC or bulk update)
+      for (const update of updates) {
+        await supabase
+          .from('rooms')
+          .update({ suggested_price: update.suggested_price })
+          .eq('id', update.id);
+      }
+
+      await fetchRooms();
+      alert('AI Price Prediction Complete!\nSuggested prices have been populated.');
+    } catch (error) {
+      console.error('Error running AI prediction:', error);
+      alert('Failed to run AI prediction.');
+    } finally {
+      setIsPredicting(false);
+    }
+  };
+
+  const renderRooms = () => (
+    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+      <div className="p-8 border-b border-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h3 className="text-xl font-bold text-slate-900">Rooms Management</h3>
+          <p className="text-sm text-slate-400">Manage all rooms and suites</p>
+        </div>
+        <div className="flex flex-wrap flex-col sm:flex-row gap-2">
+          <button
+            onClick={handleRunAIPrediction}
+            disabled={isPredicting || loadingRooms || rooms.length === 0}
+            className="text-amber-600 bg-amber-50 hover:bg-amber-100 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
+          >
+            <Zap size={16} className={isPredicting ? 'animate-pulse' : ''} />
+            {isPredicting ? 'Predicting...' : 'Predict AI Prices'}
+          </button>
+          <button
+            onClick={fetchRooms}
+            disabled={loadingRooms}
+            className="text-[#0066ff] bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={loadingRooms ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+          <button
+            onClick={() => {
+              setEditingRoom(null);
+              setRoomFormData({ status: 'Available', capacity: 2 });
+              setShowRoomForm(true);
+            }}
+            className="bg-[#0066ff] hover:bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors"
+          >
+            <Plus size={16} />
+            Add Room
+          </button>
+        </div>
+      </div>
+
+      {showRoomForm && (
+        <div className="p-8 bg-slate-50 border-b border-slate-100">
+          <h4 className="font-bold text-slate-900 mb-4">{editingRoom ? 'Edit Room' : 'Add New Room'}</h4>
+          <form onSubmit={handleSaveRoom} className="space-y-4 max-w-2xl">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Room Name</label>
+                <input required type="text" value={roomFormData.name || ''} onChange={e => setRoomFormData({ ...roomFormData, name: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff]" placeholder="e.g. Ocean View Suite 101" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Room Type</label>
+                <select required value={roomFormData.type || ''} onChange={e => setRoomFormData({ ...roomFormData, type: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff] bg-white">
+                  <option value="" disabled>Select a room type</option>
+                  <optgroup label="Bishoftu (Debre Zeyit)">
+                    <option value="Royal Presidential Suite">Royal Presidential Suite</option>
+                    <option value="Lake Side">Lake Side</option>
+                    <option value="Splash View Suite">Splash View Suite</option>
+                    <option value="Gateway Retreat">Gateway Retreat</option>
+                    <option value="Standard Twin">Standard Twin</option>
+                    <option value="Standard King">Standard King</option>
+                    <option value="Family Room">Family Room</option>
+                  </optgroup>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Price / Night ($)</label>
+                <input required type="number" min="0" value={roomFormData.price || ''} onChange={e => setRoomFormData({ ...roomFormData, price: parseFloat(e.target.value) })} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff]" placeholder="450" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Capacity</label>
+                <input required type="number" min="1" value={roomFormData.capacity || ''} onChange={e => setRoomFormData({ ...roomFormData, capacity: parseInt(e.target.value) })} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff]" placeholder="2" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Status</label>
+                <select required value={roomFormData.status || 'Available'} onChange={e => setRoomFormData({ ...roomFormData, status: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff] bg-white">
+                  <option value="Available">Available</option>
+                  <option value="Booked">Booked</option>
+                  <option value="Maintenance">Maintenance</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Description</label>
+                <textarea value={roomFormData.description || ''} onChange={e => setRoomFormData({ ...roomFormData, description: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff]" rows={3}></textarea>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setShowRoomForm(false)} className="px-4 py-2 font-bold text-slate-500 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
+              <button type="submit" className="px-4 py-2 font-bold text-white bg-[#0066ff] hover:bg-blue-600 rounded-xl transition-colors">Save Room</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-50/50">
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Name</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Type</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Price</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Suggested</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Cap.</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Status</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {loadingRooms ? (
+              <tr>
+                <td colSpan={7} className="px-8 py-12 text-center text-slate-400 font-bold">
+                  <RefreshCw size={24} className="animate-spin text-[#0066ff] mx-auto mb-2" /> Loading rooms...
+                </td>
+              </tr>
+            ) : rooms.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-8 py-12 text-center text-slate-500">No rooms found.</td>
+              </tr>
+            ) : (
+              rooms.map((room) => (
+                <tr key={room.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="px-8 py-6 font-bold text-slate-900">{room.name}</td>
+                  <td className="px-8 py-6 text-slate-500">{room.type}</td>
+                  <td className="px-8 py-6 font-bold text-slate-900">${room.price}</td>
+                  <td className="px-8 py-6 text-amber-600 font-bold">{room.suggested_price ? `$${room.suggested_price}` : '-'}</td>
+                  <td className="px-8 py-6 text-slate-500">{room.capacity}</td>
+                  <td className="px-8 py-6">
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${room.status === 'Available' ? 'bg-green-100 text-green-600' :
+                        room.status === 'Booked' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
+                      }`}>
+                      {room.status}
+                    </span>
+                  </td>
+                  <td className="px-8 py-6 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      {room.suggested_price && (
+                        <button 
+                          onClick={() => handleApprovePrice(room.id, room.suggested_price!, room.type)}
+                          title="Approve AI Suggestion"
+                          className="p-2 text-green-500 hover:bg-green-50 rounded-xl transition-colors"
+                        >
+                          <CheckCircle2 size={16} />
+                        </button>
+                      )}
+                      <button onClick={() => { setEditingRoom(room); setRoomFormData(room); setShowRoomForm(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-colors"><Edit2 size={16} /></button>
+                      <button onClick={() => handleDeleteRoom(room.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={16} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar */}
-      <motion.aside 
+      <motion.aside
         initial={false}
         animate={{ width: isSidebarOpen ? 280 : 80 }}
         className="bg-slate-900 text-white fixed h-full z-50 overflow-hidden"
@@ -680,7 +1138,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               <span className="text-xl font-bold tracking-tight">Admin</span>
             </div>
           )}
-          <button 
+          <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
             className="p-2 hover:bg-slate-800 rounded-xl transition-colors"
           >
@@ -695,17 +1153,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             { id: 'pricing-approvals', label: 'Pricing Approvals', icon: <CheckCircle2 size={20} /> },
             { id: 'pricing-calendar', label: 'Pricing Calendar', icon: <Calendar size={20} /> },
             { id: 'resorts', label: 'Resorts', icon: <Hotel size={20} /> },
+            { id: 'rooms', label: 'Rooms', icon: <DoorOpen size={20} /> },
+            { id: 'bookings', label: 'Bookings', icon: <Calendar size={20} /> },
             { id: 'guests', label: 'Guests', icon: <Users size={20} /> },
             { id: 'settings', label: 'Settings', icon: <Settings size={20} /> },
           ].map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${
-                activeTab === item.id 
-                  ? 'bg-[#0066ff] text-white shadow-lg shadow-blue-500/20' 
+              className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === item.id
+                  ? 'bg-[#0066ff] text-white shadow-lg shadow-blue-500/20'
                   : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-              }`}
+                }`}
             >
               <div className="shrink-0">{item.icon}</div>
               {isSidebarOpen && <span className="font-bold text-sm">{item.label}</span>}
@@ -731,9 +1190,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
           <div className="max-w-7xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-4 bg-slate-50 px-4 py-2 rounded-2xl w-96">
               <Search size={20} className="text-slate-400" />
-              <input 
-                type="text" 
-                placeholder="Search pricing, bookings, or resorts..." 
+              <input
+                type="text"
+                placeholder="Search pricing, bookings, or resorts..."
                 className="bg-transparent border-none focus:ring-0 text-sm w-full"
               />
             </div>
@@ -785,6 +1244,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               {activeTab === 'pricing-approvals' && renderPricingApprovals()}
               {activeTab === 'pricing-calendar' && renderPricingCalendar()}
               {activeTab === 'resorts' && renderResortsApprovals()}
+              {activeTab === 'rooms' && renderRooms()}
+              {activeTab === 'bookings' && renderBookings()}
               {activeTab === 'guests' && renderGuests()}
               {['settings'].includes(activeTab) && (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-400">

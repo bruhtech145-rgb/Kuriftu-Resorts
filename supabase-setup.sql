@@ -174,4 +174,37 @@ WHERE NOT EXISTS (
 -- Ensure they are marked as an admin in the public.profiles table
 UPDATE public.profiles 
 SET is_admin = true 
-WHERE email = 'admin@kuriftu.com';
+WHERE email IN ('admin@kuriftu.com', 'bruhtech145@gmail.com');
+
+-- 5. Create Rooms Table for CRUD
+CREATE TABLE IF NOT EXISTS public.rooms (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  price NUMERIC NOT NULL,
+  suggested_price NUMERIC,
+  capacity INTEGER NOT NULL DEFAULT 2,
+  status TEXT NOT NULL DEFAULT 'Available',
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+-- Enable RLS & Add Policies for the new table
+ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Enable read access for all" ON public.rooms FOR SELECT USING (true);
+CREATE POLICY "Enable insert access for admins" ON public.rooms FOR INSERT WITH CHECK (
+  EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.is_admin = true) OR auth.jwt()->>'email' IN ('admin@kuriftu.com', 'bruhtech145@gmail.com')
+);
+CREATE POLICY "Enable update access for admins" ON public.rooms FOR UPDATE USING (
+  EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.is_admin = true) OR auth.jwt()->>'email' IN ('admin@kuriftu.com', 'bruhtech145@gmail.com')
+);
+CREATE POLICY "Enable delete access for admins" ON public.rooms FOR DELETE USING (
+  EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.is_admin = true) OR auth.jwt()->>'email' IN ('admin@kuriftu.com', 'bruhtech145@gmail.com')
+);
+
+-- Insert Seed Data for Rooms
+INSERT INTO public.rooms (name, type, price, capacity, status, description) VALUES
+('Ocean View Suite 101', 'Ocean View Suite', 450, 2, 'Available', 'Luxurious suite with a beautiful ocean view.'),
+('Deluxe King 202', 'Deluxe King Suite', 320, 2, 'Booked', 'Spacious king suite perfect for couples.'),
+('Standard Double 303', 'Standard Double Room', 180, 4, 'Available', 'Comfortable double room for families.');

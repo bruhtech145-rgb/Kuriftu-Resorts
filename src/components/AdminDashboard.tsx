@@ -281,7 +281,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     setIsAnalyzingMarketing(true);
     try {
       const { data, error } = await supabase
-        .from('profiles')
+        .from('members')
         .select('*')
         .order('average_spend', { ascending: false });
 
@@ -300,6 +300,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         } else if (spend > 150 || points > 2000) {
           category = 'Level 2 - Standard';
         }
+
+        // Update the segment in Supabase for persistence
+        supabase.from('members').update({ ai_segment: category }).eq('id', profile.id).then();
 
         return { ...profile, category };
       });
@@ -489,7 +492,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     setLoadingGuests(true);
     try {
       const { data, error } = await supabase
-        .from('profiles')
+        .from('members')
         .select('*')
         .order('created_at', { ascending: false });
 
@@ -1115,21 +1118,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             <tr>
               <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Name</th>
               <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Email</th>
-              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Phone</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Loyalty Tier</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Points</th>
               <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Joined</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {loadingGuests ? (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-xs font-bold">Loading...</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-xs font-bold">Loading...</td></tr>
             ) : guests.length === 0 ? (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-xs font-bold text-slate-500">No guests found</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-xs font-bold text-slate-500">No guests found</td></tr>
             ) : (
               guests.map((guest) => (
                 <tr key={guest.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-3 py-2.5 font-bold text-slate-900 text-xs">{guest.full_name}</td>
                   <td className="px-3 py-2.5 text-slate-500 text-xs">{guest.email}</td>
-                  <td className="px-3 py-2.5 text-slate-500 text-xs">{guest.phone || '-'}</td>
+                  <td className="px-3 py-2.5 text-slate-500 text-xs">
+                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full text-[9px] font-bold">
+                      {guest.loyalty_tier || 'Explorer'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 text-slate-500 text-xs font-bold">{Number(guest.points_balance || 0).toLocaleString()}</td>
                   <td className="px-3 py-2.5 text-slate-400 text-xs">{new Date(guest.created_at).toLocaleDateString()}</td>
                 </tr>
               ))

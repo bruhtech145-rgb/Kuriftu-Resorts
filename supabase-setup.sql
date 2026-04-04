@@ -1,18 +1,37 @@
--- 1. Create a public profiles table to store guest information
+-- 1. Create a public profiles table to store user information (auth-linked)
 CREATE TABLE IF NOT EXISTS public.profiles (
   id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   full_name TEXT,
   phone TEXT,
   is_admin BOOLEAN DEFAULT false NOT NULL,
-  average_spend NUMERIC DEFAULT 0,
-  points_balance INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL
 );
 
--- Enable Row Level Security (RLS) on profiles
+-- 2. Create a members table for guest/customer loyalty data
+CREATE TABLE IF NOT EXISTS public.members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  full_name TEXT NOT NULL,
+  phone TEXT,
+  loyalty_tier TEXT DEFAULT 'Explorer' NOT NULL,
+  points_balance INTEGER DEFAULT 0 NOT NULL,
+  average_spend NUMERIC DEFAULT 0 NOT NULL,
+  ai_segment TEXT,
+  onboarding_completed BOOLEAN DEFAULT false NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+-- Enable Row Level Security (RLS)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.members ENABLE ROW LEVEL SECURITY;
+
 CREATE POLICY "Enable read access for all users" ON public.profiles FOR SELECT USING (true);
+CREATE POLICY "Enable read access for all users" ON public.members FOR SELECT USING (true);
+CREATE POLICY "Enable admin write access for members" ON public.members
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.is_admin = true) OR auth.jwt()->>'email' IN ('admin@kuriftu.com', 'bruhtech145@gmail.com')
+  );
 
 -- Create a trigger to automatically create a profile when a guest registers
 CREATE OR REPLACE FUNCTION public.handle_new_user() 
@@ -45,15 +64,19 @@ SELECT
 FROM auth.users
 ON CONFLICT (id) DO NOTHING;
 
--- Seed guest profiles for Marketing Segmentation AI testing
-INSERT INTO public.profiles (id, email, full_name, phone, average_spend, points_balance, is_admin)
+-- Seed guest data for Marketing Segmentation AI testing
+INSERT INTO public.members (full_name, email, phone, loyalty_tier, points_balance, average_spend)
 VALUES 
-  (gen_random_uuid(), 'premium@guest.com', 'Alexander Premium', '+251 911 000001', 450.50, 8500, false),
-  (gen_random_uuid(), 'standard1@guest.com', 'Sarah Standard', '+251 911 000002', 220.00, 3200, false),
-  (gen_random_uuid(), 'standard2@guest.com', 'Michael Midtier', '+251 911 000003', 185.75, 2800, false),
-  (gen_random_uuid(), 'budget1@guest.com', 'Billy Budget', '+251 911 000004', 85.00, 450, false),
-  (gen_random_uuid(), 'budget2@guest.com', 'Bella Basic', '+251 911 000005', 45.30, 120, false),
-  (gen_random_uuid(), 'loyal@guest.com', 'Larry Loyal', '+251 911 000006', 310.00, 12500, false)
+  ('Alexander Premium', 'premium@guest.com', '+251 911 000001', 'Pinnacle', 8500, 450.50),
+  ('Sarah Standard', 'standard1@guest.com', '+251 911 000002', 'Summit', 3200, 220.00),
+  ('Michael Midtier', 'standard2@guest.com', '+251 911 000003', 'Trekker', 2800, 185.75),
+  ('Billy Budget', 'budget1@guest.com', '+251 911 000004', 'Explorer', 450, 85.00),
+  ('Bella Basic', 'budget2@guest.com', '+251 911 000005', 'Explorer', 120, 45.30),
+  ('Larry Loyal', 'loyal@guest.com', '+251 911 000006', 'Pinnacle', 12500, 310.00),
+  ('Diana Deluxe', 'diana@guest.com', '+251 911 000007', 'Summit', 5400, 380.00),
+  ('Grant Guest', 'grant@guest.com', '+251 911 000008', 'Trekker', 1500, 140.00),
+  ('Fiona Frequent', 'fiona@guest.com', '+251 911 000009', 'Explorer', 900, 115.00),
+  ('Victor VIP', 'victor@guest.com', '+251 911 000010', 'Pinnacle', 15000, 550.00)
 ON CONFLICT (email) DO UPDATE SET 
   average_spend = EXCLUDED.average_spend,
   points_balance = EXCLUDED.points_balance;

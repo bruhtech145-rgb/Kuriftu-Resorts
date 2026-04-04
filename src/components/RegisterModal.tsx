@@ -52,7 +52,9 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
     } catch (err: any) {
       console.error('Registration error:', err);
       let message = err.message || 'An error occurred during registration.';
-      if (message === 'Failed to fetch') {
+      if (err.code === 'over_email_send_rate_limit' || message.includes('rate limit')) {
+        message = 'Too many sign-up attempts. Please wait a few minutes and try again.';
+      } else if (message === 'Failed to fetch') {
         message = 'Could not connect to Supabase. Please check your Supabase URL and ensure it is correct and accessible.';
       }
       setError(message);

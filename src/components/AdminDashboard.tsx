@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Users, 
@@ -24,7 +24,8 @@ import {
   ArrowDownRight,
   Zap,
   Clock,
-  Globe
+  Globe,
+  RefreshCw
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -43,39 +44,72 @@ interface AdminDashboardProps {
   onLogout: () => void;
 }
 
-const trendData = [
-  { name: 'Mar 28', current: 240, suggested: 260 },
-  { name: 'Mar 29', current: 240, suggested: 275 },
-  { name: 'Mar 30', current: 250, suggested: 280 },
-  { name: 'Mar 31', current: 250, suggested: 290 },
-  { name: 'Apr 1', current: 260, suggested: 300 },
-  { name: 'Apr 2', current: 265, suggested: 310 },
-  { name: 'Apr 3', current: 270, suggested: 315 },
-  { name: 'Apr 4', current: 275, suggested: 320 },
-];
-
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeTab, setActiveTab] = useState('pricing-dashboard');
+  const [guests, setGuests] = useState<any[]>([]);
+  const [loadingGuests, setLoadingGuests] = useState(false);
+
+  // New state variables for dashboard data
+  const [trendData, setTrendData] = useState<any[]>([]);
+  const [pricingApprovals, setPricingApprovals] = useState<any[]>([]);
+  const [recommendations, setRecommendations] = useState<any[]>([]);
+  const [resortApprovals, setResortApprovals] = useState<any[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const fetchDashboardData = async () => {
+    setLoadingData(true);
+    try {
+      const [trendsRes, approvalsRes, recsRes, resortsRes] = await Promise.all([
+        supabase.from('price_trends').select('*').order('order_idx', { ascending: true }),
+        supabase.from('pricing_approvals').select('*').order('target_date', { ascending: true }),
+        supabase.from('ai_recommendations').select('*'),
+        supabase.from('resort_approvals').select('*')
+      ]);
+
+      if (trendsRes.data) setTrendData(trendsRes.data.map(d => ({ name: d.date_name, current: d.current_price, suggested: d.suggested_price })));
+      if (approvalsRes.data) setPricingApprovals(approvalsRes.data.map(d => ({ id: d.id, roomType: d.room_type, date: d.target_date, current: d.current_price, suggested: d.suggested_price, change: d.change_percent, status: d.status })));
+      if (recsRes.data) setRecommendations(recsRes.data.map(d => ({ type: d.room_type, reason: d.reason, current: d.current_price, suggested: d.suggested_price, change: d.change_percent, confidence: d.confidence })));
+      if (resortsRes.data) setResortApprovals(resortsRes.data.map(d => ({ id: d.id, resort: d.resort_name, occupancy: d.occupancy, currentRate: d.current_rate, suggestedRate: d.suggested_rate, change: d.change_percent, reason: d.reason, status: d.status })));
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'guests') {
+      fetchGuests();
+    }
+  }, [activeTab]);
+
+  const fetchGuests = async () => {
+    setLoadingGuests(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+        
+      if (error) throw error;
+      setGuests(data || []);
+    } catch (error) {
+      console.error('Error fetching guests from Supabase:', error);
+    } finally {
+      setLoadingGuests(false);
+    }
+  };
 
   const pricingStats = [
     { label: 'Current Avg Price', value: '$275', change: '+8.2%', icon: <TrendingUp size={24} />, color: 'bg-blue-500' },
     { label: 'AI Suggested Price', value: '$298', change: '+12.5%', icon: <Zap size={24} />, color: 'bg-amber-500' },
     { label: 'Occupancy Rate', value: '87%', change: '+5.3%', icon: <Hotel size={24} />, color: 'bg-green-500' },
     { label: 'Revenue Projection', value: '$45.2K', change: '+15.7%', icon: <TrendingUp size={24} />, color: 'bg-purple-500' },
-  ];
-
-  const pricingApprovals = [
-    { id: 1, roomType: 'Deluxe King Suite', date: 'Apr 5, 2026', current: 280, suggested: 320, change: '+14.3%', status: 'Pending' },
-    { id: 2, roomType: 'Standard Double Room', date: 'Apr 5, 2026', current: 180, suggested: 210, change: '+16.7%', status: 'Pending' },
-    { id: 3, roomType: 'Ocean View Suite', date: 'Apr 6, 2026', current: 450, suggested: 420, change: '-6.7%', status: 'Pending' },
-  ];
-
-  const recommendations = [
-    { type: 'Deluxe King Suite', reason: 'High weekend demand detected', current: 280, suggested: 320, change: '+14.3%', confidence: '95%' },
-    { type: 'Standard Double Room', reason: 'Conference event nearby', current: 180, suggested: 210, change: '+16.7%', confidence: '88%' },
-    { type: 'Ocean View Suite', reason: 'Competitor pricing lower', current: 450, suggested: 420, change: '-6.7%', confidence: '82%' },
-    { type: 'Junior Suite', reason: 'Low inventory remaining', current: 220, suggested: 245, change: '+11.4%', confidence: '90%' },
   ];
 
   const calendarDays = Array.from({ length: 18 }, (_, i) => {
@@ -382,13 +416,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     </div>
   );
 
-  const resortApprovals = [
-    { id: 1, resort: 'Kuriftu Bishoftu', occupancy: '92%', currentRate: '$280', suggestedRate: '$325', change: '+16%', reason: 'High Occupancy detected', status: 'Pending' },
-    { id: 2, resort: 'Kuriftu Entoto', occupancy: '45%', currentRate: '$180', suggestedRate: '$155', change: '-14%', reason: 'Low weekday demand', status: 'Pending' },
-    { id: 3, resort: 'Kuriftu Lake Tana', occupancy: '78%', currentRate: '$220', suggestedRate: '$245', change: '+11%', reason: 'Local festival upcoming', status: 'Pending' },
-    { id: 4, resort: 'Kuriftu Awash', occupancy: '85%', currentRate: '$195', suggestedRate: '$225', change: '+15%', reason: 'Weekend peak forecast', status: 'Pending' },
-  ];
-
   const renderResortsApprovals = () => (
     <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
       <div className="p-8 border-b border-slate-50 flex items-center justify-between">
@@ -462,6 +489,74 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                 </td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderGuests = () => (
+    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+      <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+        <div>
+          <h3 className="text-xl font-bold text-slate-900">Registered Guests</h3>
+          <p className="text-sm text-slate-400">Manage all registered users from Supabase</p>
+        </div>
+        <button 
+          onClick={fetchGuests} 
+          disabled={loadingGuests}
+          className="text-[#0066ff] hover:bg-blue-50 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={16} className={loadingGuests ? 'animate-spin' : ''} />
+          Refresh
+        </button>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-50/50">
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Name</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Email</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Phone</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Joined</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {loadingGuests ? (
+              <tr>
+                <td colSpan={4} className="px-8 py-12 text-center text-slate-400 font-bold">
+                  <div className="flex justify-center items-center gap-3">
+                    <RefreshCw size={24} className="animate-spin text-[#0066ff]" />
+                    Loading guests from Supabase...
+                  </div>
+                </td>
+              </tr>
+            ) : guests.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="px-8 py-12 text-center">
+                  <p className="text-slate-900 font-bold text-lg mb-2">No guests found</p>
+                  <p className="text-slate-500 text-sm">Make sure the `profiles` table and trigger are set up in your Supabase project.</p>
+                </td>
+              </tr>
+            ) : (
+              guests.map((guest) => (
+                <tr key={guest.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-blue-100 text-[#0066ff] rounded-full flex items-center justify-center font-bold">
+                        {guest.full_name?.charAt(0) || <UserCircle size={20} />}
+                      </div>
+                      <span className="font-bold text-slate-900">{guest.full_name || 'N/A'}</span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-6 text-slate-500 font-medium">{guest.email || 'N/A'}</td>
+                  <td className="px-8 py-6 text-slate-500">{guest.phone || 'N/A'}</td>
+                  <td className="px-8 py-6 text-slate-500 text-sm">
+                    {new Date(guest.created_at).toLocaleDateString()}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -574,7 +669,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               {activeTab === 'pricing-approvals' && renderPricingApprovals()}
               {activeTab === 'pricing-calendar' && renderPricingCalendar()}
               {activeTab === 'resorts' && renderResortsApprovals()}
-              {['guests', 'settings'].includes(activeTab) && (
+              {activeTab === 'guests' && renderGuests()}
+              {['settings'].includes(activeTab) && (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-400">
                   <Hotel size={64} className="mb-4 opacity-20" />
                   <p className="text-xl font-bold">Module coming soon</p>

@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Member, Service, Preferences, PricingRule } from '../types';
-import { db, handleFirestoreError } from '../lib/firebase';
-import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, Filter, Sparkles, Star, MapPin, Clock, Users, ChevronRight, Tag } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -21,29 +20,66 @@ export default function MemberPortal({ member }: MemberPortalProps) {
   const [selectedService, setSelectedService] = useState<Service | null>(null);
 
   useEffect(() => {
-    const q = query(collection(db, 'services'), where('status', '==', 'Active'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const servicesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Service));
-      setServices(servicesData);
-    }, (error) => {
-      handleFirestoreError(error, 'list', 'services');
-    });
+    // Fetch active services
+    const fetchServices = async () => {
+      const { data, error } = await supabase
+        .from('services')
+        .select('*')
+        .eq('status', 'Active');
+      if (error) {
+        console.error('Error fetching services:', error);
+      } else {
+        setServices(data as Service[]);
+      }
+    };
 
-    const rulesUnsubscribe = onSnapshot(collection(db, 'pricing_rules'), (snapshot) => {
-      const rules = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingRule));
-      setPricingRules(rules);
-    }, (err) => handleFirestoreError(err, 'list', 'pricing_rules'));
+    // Fetch pricing rules
+    const fetchRules = async () => {
+      const { data, error } = await supabase
+        .from('pricing_rules')
+        .select('*');
+      if (error) {
+        console.error('Error fetching pricing rules:', error);
+      } else {
+        setPricingRules(data as PricingRule[]);
+      }
+    };
 
-    const prefsRef = doc(db, 'members', member.id, 'preferences', 'current');
-    getDoc(prefsRef).then(snap => {
-      if (snap.exists()) setPrefs(snap.data() as Preferences);
-    }).catch(error => {
-      handleFirestoreError(error, 'get', `members/${member.id}/preferences/current`);
-    });
+    // Fetch member preferences
+    const fetchPrefs = async () => {
+      const { data, error } = await supabase
+        .from('member_preferences')
+        .select('*')
+        .eq('member_id', member.id)
+        .single();
+      if (data) setPrefs(data as Preferences);
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching preferences:', error);
+      }
+    };
+
+    fetchServices();
+    fetchRules();
+    fetchPrefs();
+
+    // Subscribe to realtime changes for services
+    const servicesChannel = supabase
+      .channel('services-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'services' }, () => {
+        fetchServices();
+      })
+      .subscribe();
+
+    const rulesChannel = supabase
+      .channel('pricing-rules-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pricing_rules' }, () => {
+        fetchRules();
+      })
+      .subscribe();
 
     return () => {
-      unsubscribe();
-      rulesUnsubscribe();
+      supabase.removeChannel(servicesChannel);
+      supabase.removeChannel(rulesChannel);
     };
   }, [member.id]);
 

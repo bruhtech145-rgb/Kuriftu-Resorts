@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Member, Preferences } from '../types';
-import { db, handleFirestoreError } from '../lib/firebase';
-import { doc, setDoc, updateDoc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 import { Check, ChevronRight, Sparkles, Map, Utensils, Heart, Wallet } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -48,27 +47,27 @@ export default function Onboarding({ member, onComplete }: OnboardingProps) {
         tagline: "The Explorer of Lalibela"
       };
 
-      const memberRef = doc(db, 'members', member.id);
-      const updatedMember = {
-        ...member,
-        onboarding_completed: true,
-      };
-      
-      try {
-        await updateDoc(memberRef, { onboarding_completed: true });
-        
-        const prefsRef = doc(db, 'members', member.id, 'preferences', 'current');
-        await setDoc(prefsRef, {
+      // Update member onboarding status
+      const { error: memberError } = await supabase
+        .from('members')
+        .update({ onboarding_completed: true })
+        .eq('id', member.id);
+
+      if (memberError) throw memberError;
+
+      // Upsert member preferences
+      const { error: prefsError } = await supabase
+        .from('member_preferences')
+        .upsert({
+          member_id: member.id,
           ...prefs,
           ...aiResult,
-          member_id: member.id,
           ai_segment_updated_at: new Date().toISOString()
-        });
+        }, { onConflict: 'member_id' });
 
-        onComplete(updatedMember);
-      } catch (error) {
-        handleFirestoreError(error, 'write', `members/${member.id}`);
-      }
+      if (prefsError) throw prefsError;
+
+      onComplete({ ...member, onboarding_completed: true });
     } catch (error) {
       console.error("Onboarding failed", error);
     } finally {

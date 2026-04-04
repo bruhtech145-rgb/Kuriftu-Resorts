@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const rawUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY;
+const rawUrl = import.meta.env.VITE_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY;
 
 // Helper to ensure URL has protocol
 const formatUrl = (url: string | undefined): string | undefined => {
@@ -25,10 +25,9 @@ const isValidUrl = (url: string | undefined): url is string => {
 const isPlaceholder = !supabaseUrl || !isValidUrl(supabaseUrl) || supabaseUrl.includes('placeholder') || !supabaseAnonKey || supabaseAnonKey.includes('placeholder');
 
 if (isPlaceholder) {
-  console.warn('Supabase credentials missing or using placeholders. Please set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY in your environment settings.');
+  console.warn('Supabase credentials missing or using placeholders. Please set VITE_PUBLIC_SUPABASE_URL and VITE_PUBLIC_SUPABASE_ANON_KEY in your environment.');
 }
 
-// Ensure createClient is ALWAYS called with a valid URL string to prevent boot crash
 const finalUrl = isValidUrl(supabaseUrl) ? supabaseUrl : 'https://placeholder.supabase.co';
 const finalKey = supabaseAnonKey || 'placeholder-key';
 

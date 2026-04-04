@@ -1,12 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Calendar, Users, CreditCard, CheckCircle2, AlertCircle, Clock, Moon, ChevronRight } from 'lucide-react';
 import { Service, Member, PricingRule } from '../types';
-import { db, handleFirestoreError } from '../lib/firebase';
-import { collection, addDoc, onSnapshot } from 'firebase/firestore';
-import { format, addDays, differenceInDays, isBefore, startOfDay } from 'date-fns';
+import { supabase } from '../lib/supabase';
+import { format, addDays, differenceInDays } from 'date-fns';
 import { calculateDynamicPrice } from '../lib/pricing';
-import { useEffect } from 'react';
 import { clsx } from 'clsx';
 
 interface BookingModalProps {
@@ -26,12 +24,17 @@ export default function BookingModal({ service, member, onClose }: BookingModalP
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'pricing_rules'), (snapshot) => {
-      const rules = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingRule));
-      setPricingRules(rules);
-    }, (err) => handleFirestoreError(err, 'list', 'pricing_rules'));
-
-    return () => unsubscribe();
+    const fetchRules = async () => {
+      const { data, error } = await supabase
+        .from('pricing_rules')
+        .select('*');
+      if (error) {
+        console.error('Error fetching pricing rules:', error);
+      } else {
+        setPricingRules(data as PricingRule[]);
+      }
+    };
+    fetchRules();
   }, []);
 
   const nights = useMemo(() => {
@@ -78,10 +81,14 @@ export default function BookingModal({ service, member, onClose }: BookingModalP
         nights: isRoom ? nights : null
       };
 
-      await addDoc(collection(db, 'bookings'), bookingData);
+      const { error: insertError } = await supabase
+        .from('bookings')
+        .insert(bookingData);
+
+      if (insertError) throw insertError;
       setStep(3);
     } catch (err) {
-      handleFirestoreError(err, 'create', 'bookings');
+      console.error('Booking error:', err);
       setError("Failed to complete booking. Please try again.");
     } finally {
       setLoading(false);

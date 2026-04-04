@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, handleFirestoreError } from './lib/firebase';
-import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
+import { useState, useEffect } from 'react';
+import { supabase } from './lib/supabase';
 import { Member } from './types';
 import Layout from './components/Layout';
 import Onboarding from './components/Onboarding';
@@ -8,7 +7,7 @@ import MemberPortal from './components/MemberPortal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminLogin } from './components/AdminLogin';
 import LandingPage from './components/LandingPage';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -18,56 +17,83 @@ export default function App() {
   const [view, setView] = useState<'home' | 'admin-login' | 'admin-dashboard'>('home');
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        // Check admin status first to avoid unnecessary member fetch if admin
-        const adminStatus = currentUser.email === "bruhtech145@gmail.com";
-        setIsAdmin(adminStatus);
-
-        // Check if member profile exists
-        const memberRef = doc(db, 'members', currentUser.uid);
-        try {
-          const memberSnap = await getDoc(memberRef);
-          
-          if (memberSnap.exists()) {
-            setMember(memberSnap.data() as Member);
-          } else {
-            // Create initial member profile
-            const newMember: Member = {
-              id: currentUser.uid,
-              email: currentUser.email || '',
-              full_name: currentUser.displayName || 'Guest',
-              loyalty_tier: 'Explorer',
-              points_balance: 0,
-              onboarding_completed: false,
-            };
-            await setDoc(memberRef, newMember);
-            setMember(newMember);
-          }
-        } catch (error) {
-          handleFirestoreError(error, 'get/set', `members/${currentUser.uid}`);
-        }
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        handleUser(session.user);
       } else {
-        setMember(null);
-        setIsAdmin(false);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
-    return () => unsubscribe();
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user) {
+        await handleUser(session.user);
+      } else {
+        setUser(null);
+        setMember(null);
+        setIsAdmin(false);
+        setLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  const handleUser = async (currentUser: any) => {
+    setUser(currentUser);
+    const adminStatus = currentUser.email === "bruhtech145@gmail.com";
+    setIsAdmin(adminStatus);
+
+    // Check if member profile exists
+    const { data: existingMember, error } = await supabase
+      .from('members')
+      .select('*')
+      .eq('id', currentUser.id)
+      .single();
+
+    if (error && error.code === 'PGRST116') {
+      // No member found — create one
+      const newMember: Member = {
+        id: currentUser.id,
+        email: currentUser.email || '',
+        full_name: currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'Guest',
+        loyalty_tier: 'Explorer',
+        points_balance: 0,
+        onboarding_completed: false,
+      };
+      const { data: inserted, error: insertError } = await supabase
+        .from('members')
+        .insert(newMember)
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Failed to create member profile:', insertError);
+        return;
+      }
+      setMember(inserted as Member);
+    } else if (error) {
+      console.error('Error fetching member:', error);
+    } else {
+      setMember(existingMember as Member);
+    }
+    setLoading(false);
+  };
 
   const handleLogin = async () => {
     try {
-      await signInWithPopup(auth, googleProvider);
+      await supabase.auth.signInWithOAuth({
+        provider: 'google',
+      });
     } catch (error) {
       console.error("Login failed", error);
     }
   };
 
   const handleLogout = async () => {
-    await signOut(auth);
+    await supabase.auth.signOut();
   };
 
   if (loading) {
@@ -84,9 +110,9 @@ export default function App() {
 
   if (view === 'admin-login') {
     return (
-      <AdminLogin 
-        onBack={() => setView('home')} 
-        onLoginSuccess={() => setView('admin-dashboard')} 
+      <AdminLogin
+        onBack={() => setView('home')}
+        onLoginSuccess={() => setView('admin-dashboard')}
       />
     );
   }
@@ -97,9 +123,9 @@ export default function App() {
 
   if (!user) {
     return (
-      <LandingPage 
-        onLogin={handleLogin} 
-        onAdminPortal={() => setView('admin-login')} 
+      <LandingPage
+        onLogin={handleLogin}
+        onAdminPortal={() => setView('admin-login')}
       />
     );
   }

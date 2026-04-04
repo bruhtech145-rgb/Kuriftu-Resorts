@@ -138,17 +138,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const fetchDashboardData = async () => {
     setLoadingData(true);
     try {
-      const [trendsRes, approvalsRes, recsRes, resortsRes] = await Promise.all([
+      const [trendsRes, approvalsRes, recsRes, resortsRes, roomsRes, bookingsRes] = await Promise.all([
         supabase.from('price_trends').select('*').order('order_idx', { ascending: true }),
-        supabase.from('pricing_approvals').select('*').order('target_date', { ascending: true }),
+        supabase.from('pricing_approvals').select('*').eq('status', 'Pending').order('target_date', { ascending: true }),
         supabase.from('ai_recommendations').select('*'),
-        supabase.from('resort_approvals').select('*')
+        supabase.from('resort_approvals').select('*'),
+        supabase.from('rooms').select('*'),
+        supabase.from('bookings').select('final_price, status')
       ]);
 
       if (trendsRes.data) setTrendData(trendsRes.data.map(d => ({ name: d.date_name, current: d.current_price, suggested: d.suggested_price })));
       if (approvalsRes.data) setPricingApprovals(approvalsRes.data.map(d => ({ id: d.id, roomType: d.room_type, date: d.target_date, current: d.current_price, suggested: d.suggested_price, change: d.change_percent, status: d.status })));
       if (recsRes.data) setRecommendations(recsRes.data.map(d => ({ type: d.room_type, reason: d.reason, current: d.current_price, suggested: d.suggested_price, change: d.change_percent, confidence: d.confidence })));
       if (resortsRes.data) setResortApprovals(resortsRes.data.map(d => ({ id: d.id, resort: d.resort_name, occupancy: d.occupancy, currentRate: d.current_rate, suggestedRate: d.suggested_rate, change: d.change_percent, reason: d.reason, status: d.status })));
+      if (roomsRes.data) setRooms(roomsRes.data);
+      if (bookingsRes.data) setBookings(bookingsRes.data as any);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -209,7 +213,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     }
   };
 
-  const handleApprovePrice = async (roomId: string, suggestedPrice: number, roomType: string) => {
+  const handleApprovePrice = async (roomId: string | null, suggestedPrice: number, roomType: string, approvalId?: string) => {
     try {
       // 1. Update ALL rooms of the same type to maintain consistency
       const { error: roomError } = await supabase
@@ -232,7 +236,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         console.warn('Could not update service base_price:', serviceError);
       }
 
+      // 3. Mark approval as 'Approved' if called from approvals tab
+      if (approvalId) {
+        await supabase.from('pricing_approvals').update({ status: 'Approved' }).eq('id', approvalId);
+      }
+
       await fetchRooms();
+      await fetchDashboardData();
       alert(`AI Price Approved!\nAll rooms within '${roomType}' category have been updated to ETB ${suggestedPrice}.`);
     } catch (error) {
       console.error('Error approving price:', error);
@@ -350,13 +360,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     }
   };
 
-  const pricingStats = [
-    { label: 'Current Avg Price', value: '$275', change: '+8.2%', icon: <TrendingUp size={24} />, color: 'bg-blue-500' },
-    { label: 'AI Suggested Price', value: '$298', change: '+12.5%', icon: <Zap size={24} />, color: 'bg-amber-500' },
-    { label: 'Occupancy Rate', value: '87%', change: '+5.3%', icon: <Hotel size={24} />, color: 'bg-green-500' },
-    { label: 'Revenue Projection', value: '$45.2K', change: '+15.7%', icon: <TrendingUp size={24} />, color: 'bg-purple-500' },
-  ];
+  const pricingStats = React.useMemo(() => {
+    const totalRooms = rooms.length || 1;
+    const bookedRooms = rooms.filter(r => r.status === 'Booked').length;
+    const occupancyRate = (bookedRooms / totalRooms);
+    
+    const avgPrice = rooms.reduce((acc, r) => acc + Number(r.price), 0) / totalRooms;
+    
+    const suggestedRooms = rooms.filter(r => r.suggested_price);
+    const avgSuggested = suggestedRooms.length > 0
+      ? suggestedRooms.reduce((acc, r) => acc + Number(r.suggested_price), 0) / suggestedRooms.length
+      : avgPrice;
+    
+    const suggestedChange = avgPrice > 0 ? ((avgSuggested - avgPrice) / avgPrice) * 100 : 0;
+    
+    const revenue = bookings.reduce((acc, b) => acc + (Number(b.final_price) || 0), 0);
 
+    return [
+      { label: 'Current Avg Price', value: `ETB ${Math.round(avgPrice).toLocaleString()}`, change: '+3.2%', icon: <TrendingUp size={24} />, color: 'bg-blue-500' },
+      { label: 'AI Suggested Price', value: `ETB ${Math.round(avgSuggested).toLocaleString()}`, change: `${suggestedChange >= 0 ? '+' : ''}${suggestedChange.toFixed(1)}%`, icon: <Zap size={24} />, color: 'bg-amber-500' },
+      { label: 'Occupancy Rate', value: `${Math.round(occupancyRate * 100)}%`, change: occupancyRate > 0.6 ? 'High' : 'Normal', icon: <Hotel size={24} />, color: 'bg-green-500' },
+      { label: 'Total Revenue', value: `ETB ${(revenue / 1000).toFixed(1)}k`, change: '+15.7%', icon: <TrendingUp size={24} />, color: 'bg-purple-500' },
+    ];
+  }, [rooms, bookings]);
+
+
+  const quickInsights = React.useMemo(() => {
+    const oppty = rooms.reduce((acc, r) => acc + (r.suggested_price ? (Number(r.suggested_price) - Number(r.price)) : 0), 0);
+    const occupancy = rooms.length ? (rooms.filter(r => r.status === 'Booked').length / rooms.length) : 0;
+    const avgPrice = rooms.length ? (rooms.reduce((acc, r) => acc + Number(r.price), 0) / rooms.length) : 250;
+    
+    return {
+      revenueOpportunity: `ETB ${(oppty * 7 / 1000).toFixed(1)}K`, // Estimated weekly gain
+      highDemandPeriod: 'Weekend (Apr 10-12)', // Could be dynamic based on pricing_approvals
+      avgWindow: '12 days',
+      compPrice: `ETB ${Math.round(avgPrice * 1.05).toLocaleString()}`,
+      marketDemand: occupancy > 0.7 ? 'High' : occupancy > 0.4 ? 'Medium' : 'Low'
+    };
+  }, [rooms]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -448,7 +489,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                 <span className="font-bold text-sm">Revenue Opportunity</span>
               </div>
               <p className="text-sm text-blue-900/70 leading-relaxed">
-                Accepting AI suggestions could increase revenue by <span className="font-bold">$8.5K</span> this week
+                Accepting AI suggestions could increase revenue by <span className="font-bold">{quickInsights.revenueOpportunity}</span> this week
               </p>
             </div>
             <div className="p-4 bg-amber-50 rounded-2xl">
@@ -457,17 +498,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                 <span className="font-bold text-sm">High Demand Period</span>
               </div>
               <p className="text-sm text-amber-900/70 leading-relaxed">
-                Weekend (Apr 5-7) shows <span className="font-bold">156%</span> higher demand than average
+                {quickInsights.highDemandPeriod} shows <span className="font-bold">156%</span> higher demand than average
               </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-slate-50 rounded-2xl text-center">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Avg. Window</p>
-                <p className="text-lg font-bold text-slate-900">14 days</p>
+                <p className="text-lg font-bold text-slate-900">{quickInsights.avgWindow}</p>
               </div>
               <div className="p-4 bg-slate-50 rounded-2xl text-center">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Comp. Price</p>
-                <p className="text-lg font-bold text-slate-900">$285</p>
+                <p className="text-lg font-bold text-slate-900">{quickInsights.compPrice}</p>
               </div>
             </div>
             <div className="flex items-center justify-between p-4 bg-slate-900 text-white rounded-2xl">
@@ -475,7 +516,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                 <Globe size={20} className="text-[#0066ff]" />
                 <span className="font-bold text-sm">Market Demand</span>
               </div>
-              <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg">High</span>
+              <span className={`text-white text-[10px] font-bold px-2 py-1 rounded-lg ${
+                quickInsights.marketDemand === 'High' ? 'bg-green-500' : 
+                quickInsights.marketDemand === 'Medium' ? 'bg-amber-500' : 'bg-blue-500'
+              }`}>
+                {quickInsights.marketDemand}
+              </span>
             </div>
           </div>
         </div>
@@ -596,11 +642,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                   </td>
                   <td className="px-8 py-6 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button className="p-2 text-green-500 hover:bg-green-50 rounded-xl transition-colors">
-                        <CheckCircle2 size={20} />
+                       <button 
+                        onClick={() => handleApprovePrice(null, approval.suggested, approval.roomType, approval.id)}
+                        className="px-4 py-1.5 bg-green-500 text-white rounded-xl text-xs font-bold hover:bg-green-600 transition-colors shadow-lg shadow-green-500/10"
+                      >
+                        Approve
                       </button>
-                      <button className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors">
-                        <XCircle size={20} />
+                      <button 
+                        onClick={async () => {
+                          await supabase.from('pricing_approvals').update({ status: 'Rejected' }).eq('id', approval.id);
+                          fetchDashboardData();
+                        }}
+                        className="px-4 py-1.5 bg-slate-100 text-slate-500 rounded-xl text-xs font-bold hover:bg-red-50 hover:text-red-500 transition-colors"
+                      >
+                        Reject
                       </button>
                     </div>
                   </td>

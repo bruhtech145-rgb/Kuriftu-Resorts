@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Mail, Lock, User, Phone, CheckCircle2, AlertCircle, Loader2, ArrowRight, ArrowLeft, Utensils, Heart, MapPin, Sparkles } from 'lucide-react';
-import { auth, db, createUserWithEmailAndPassword, updateProfile, handleFirestoreError } from '../lib/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 
 interface RegisterModalProps {
   isOpen: boolean;
@@ -43,32 +42,41 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
     setError(null);
 
     try {
-      // 1. Create user in Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-
-      // 2. Update Auth Profile
-      await updateProfile(user, {
-        displayName: fullName
+      // 1. Create user in Supabase Auth
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            phone: phone,
+            origin: origin,
+            food_preferences: foodPreferences,
+            allergies: allergies,
+          },
+        },
       });
 
-      // 3. Create Member Profile in Firestore
-      const memberRef = doc(db, 'members', user.uid);
-      const memberData = {
-        id: user.uid,
-        email: email,
-        full_name: fullName,
-        phone: phone,
-        origin: origin,
-        food_preferences: foodPreferences,
-        allergies: allergies,
-        loyalty_tier: 'Explorer',
-        points_balance: 0,
-        onboarding_completed: true, // Since they filled out the multi-step form
-        registration_date: new Date().toISOString(),
-      };
+      if (signUpError) throw signUpError;
 
-      await setDoc(memberRef, memberData);
+      if (data.user) {
+        // 2. Create Member Profile in Supabase
+        const { error: memberError } = await supabase
+          .from('members')
+          .insert({
+            id: data.user.id,
+            email: email,
+            full_name: fullName,
+            loyalty_tier: 'Explorer',
+            points_balance: 0,
+            onboarding_completed: true,
+          });
+
+        if (memberError && memberError.code !== '23505') {
+          // 23505 = duplicate key (profile trigger may have already created it)
+          console.error('Member profile creation error:', memberError);
+        }
+      }
 
       setSuccess(true);
       setTimeout(() => {

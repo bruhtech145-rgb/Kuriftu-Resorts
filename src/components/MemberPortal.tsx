@@ -209,16 +209,10 @@ export default function MemberPortal({ member }: MemberPortalProps) {
                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                 referrerPolicy="no-referrer"
               />
-              <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
-                <div className="bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-stone-900 shadow-sm flex items-center gap-1">
-                  <TrendingUp size={12} className="text-[#0066ff]" />
-                  ETB {getDynamicPrice(service).toLocaleString()}
+              <div className="absolute top-4 right-4">
+                <div className="bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-stone-900 shadow-sm">
+                  ETB {service.base_price.toLocaleString()}
                 </div>
-                {getDynamicPrice(service) !== service.base_price && (
-                  <div className="bg-[#0066ff]/90 backdrop-blur-md px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-lg animate-pulse">
-                    AI Adjusted
-                  </div>
-                )}
               </div>
               {prefs?.recommended_services?.includes(service.id) && (
                 <div className="absolute top-4 left-4 bg-stone-900 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">

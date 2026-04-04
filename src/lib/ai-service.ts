@@ -419,7 +419,11 @@ export async function chatWithAI(
     conversationMessages.push(choice.message);
 
     for (const toolCall of choice.message.tool_calls) {
-      const args = JSON.parse(toolCall.function.arguments || '{}');
+      let args: Record<string, any> = {};
+      try {
+        const parsed = JSON.parse(toolCall.function.arguments || '{}');
+        args = parsed && typeof parsed === 'object' ? parsed : {};
+      } catch { args = {}; }
       const result = await executeTool(toolCall.function.name, args, context);
 
       conversationMessages.push({

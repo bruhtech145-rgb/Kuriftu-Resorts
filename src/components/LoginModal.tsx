@@ -22,12 +22,28 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSwitc
     setError(null);
 
     try {
-      const { error: loginError } = await supabase.auth.signInWithPassword({
+      const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (loginError) throw loginError;
+
+      // Check if this is an admin — admins should use the Admin Portal
+      if (data.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('is_admin')
+          .eq('id', data.user.id)
+          .single();
+
+        if (profile?.is_admin) {
+          await supabase.auth.signOut();
+          setError('This is an admin account. Please use the Admin Portal to sign in.');
+          return;
+        }
+      }
+
       onClose();
     } catch (err: any) {
       let message = err.message || 'Invalid email or password.';

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Mail, Lock, User, Phone, CheckCircle2, AlertCircle, Loader2, ArrowRight, ArrowLeft, Utensils, Heart, MapPin, Sparkles } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { auth, db, createUserWithEmailAndPassword, updateProfile, handleFirestoreError } from '../lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
 interface RegisterModalProps {
   isOpen: boolean;
@@ -38,45 +39,52 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ isOpen, onClose })
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!isSupabaseConfigured) {
-      setError('Supabase is not configured. Please set your Supabase URL and Publishable Key in the application settings.');
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-            phone: phone,
-            origin: origin,
-            food_preferences: foodPreferences,
-            allergies: allergies,
-            registration_date: new Date().toISOString(),
-          },
-        },
+      // 1. Create user in Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // 2. Update Auth Profile
+      await updateProfile(user, {
+        displayName: fullName
       });
 
-      if (signUpError) throw signUpError;
+      // 3. Create Member Profile in Firestore
+      const memberRef = doc(db, 'members', user.uid);
+      const memberData = {
+        id: user.uid,
+        email: email,
+        full_name: fullName,
+        phone: phone,
+        origin: origin,
+        food_preferences: foodPreferences,
+        allergies: allergies,
+        loyalty_tier: 'Explorer',
+        points_balance: 0,
+        onboarding_completed: true, // Since they filled out the multi-step form
+        registration_date: new Date().toISOString(),
+      };
 
-      if (data.user) {
-        setSuccess(true);
-        setTimeout(() => {
-          onClose();
-          setSuccess(false);
-          setStep(1);
-        }, 3000);
-      }
+      await setDoc(memberRef, memberData);
+
+      setSuccess(true);
+      setTimeout(() => {
+        onClose();
+        setSuccess(false);
+        setStep(1);
+      }, 3000);
     } catch (err: any) {
       console.error('Registration error:', err);
       let message = err.message || 'An error occurred during registration.';
-      if (message === 'Failed to fetch') {
-        message = 'Could not connect to Supabase. Please check your Supabase URL and ensure it is correct and accessible.';
+      if (message.includes('auth/email-already-in-use')) {
+        message = 'This email address is already in use.';
+      } else if (message.includes('auth/weak-password')) {
+        message = 'Password should be at least 6 characters.';
+      } else if (message.includes('auth/invalid-email')) {
+        message = 'The email address is badly formatted.';
       }
       setError(message);
     } finally {

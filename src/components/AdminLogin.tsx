@@ -36,11 +36,21 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onBack, onLoginSuccess }
 
       if (loginError) throw loginError;
 
-      if (data.user) {
-        // In a real app, we would check if the user has an 'admin' role in a profiles table
-        // For this demo, we'll assume any successful login to the admin portal is valid
+      // Check if the user is an admin
+    if (data.user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profile?.is_admin) {
         onLoginSuccess();
+      } else {
+        await supabase.auth.signOut();
+        setError('Unauthorized: You do not have admin privileges.');
       }
+    }
     } catch (err: any) {
       console.error('Admin login error:', err);
       let message = err.message || 'Invalid email or password.';

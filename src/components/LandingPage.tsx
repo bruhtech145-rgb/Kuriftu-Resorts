@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { AIItineraryBuilder } from './AIItineraryBuilder';
 import { RegisterModal } from './RegisterModal';
+import { LoginModal } from './LoginModal';
 
 interface LandingPageProps {
   onLogin: () => void;
@@ -31,6 +32,7 @@ interface LandingPageProps {
 export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'rooms' | 'activities'>('rooms');
   const [destination, setDestination] = useState('Kuriftu Resort & Spa African Village');
   const [guests, setGuests] = useState('2 Adults, 1 Room');
@@ -129,11 +131,11 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
             <div className="flex items-center gap-4">
               <div className="hidden xl:flex items-center gap-2">
                 <button
-                  onClick={onLogin}
+                  onClick={() => setIsLoginOpen(true)}
                   className="flex items-center gap-2 text-slate-600 hover:text-[#0066ff] font-bold text-sm px-4 py-2 rounded-xl hover:bg-slate-50 transition-all"
                 >
                   <LogIn size={18} />
-                  Member Portal
+                  Sign In
                 </button>
                 <button
                   onClick={onAdminPortal}
@@ -172,9 +174,9 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
           >
             <div className="flex flex-col gap-2">
               <div className="grid grid-cols-2 gap-4 mb-8">
-                <button onClick={onLogin} className="flex flex-col items-center gap-3 p-6 bg-slate-50 rounded-[2rem] text-slate-900">
+                <button onClick={() => { setIsMenuOpen(false); setIsLoginOpen(true); }} className="flex flex-col items-center gap-3 p-6 bg-slate-50 rounded-[2rem] text-slate-900">
                   <LogIn size={24} className="text-[#0066ff]" />
-                  <span className="font-bold text-sm">Member</span>
+                  <span className="font-bold text-sm">Sign In</span>
                 </button>
                 <button onClick={onAdminPortal} className="flex flex-col items-center gap-3 p-6 bg-slate-50 rounded-[2rem] text-slate-900">
                   <Settings size={24} className="text-[#0066ff]" />
@@ -439,10 +441,18 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
       {/* AI Itinerary Builder */}
       <AIItineraryBuilder />
 
+      {/* Login Modal */}
+      <LoginModal
+        isOpen={isLoginOpen}
+        onClose={() => setIsLoginOpen(false)}
+        onSwitchToRegister={() => { setIsLoginOpen(false); setIsRegisterOpen(true); }}
+        onGoogleLogin={onLogin}
+      />
+
       {/* Registration Modal */}
-      <RegisterModal 
-        isOpen={isRegisterOpen} 
-        onClose={() => setIsRegisterOpen(false)} 
+      <RegisterModal
+        isOpen={isRegisterOpen}
+        onClose={() => setIsRegisterOpen(false)}
       />
 
       {/* Footer */}

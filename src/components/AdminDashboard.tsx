@@ -25,7 +25,11 @@ import {
   Zap,
   Clock,
   Globe,
-  RefreshCw
+  RefreshCw,
+  DoorOpen,
+  Plus,
+  Edit2,
+  Trash2
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -39,6 +43,7 @@ import {
   Area 
 } from 'recharts';
 import { supabase } from '../lib/supabase';
+import { Room } from '../types';
 
 interface AdminDashboardProps {
   onLogout: () => void;
@@ -49,6 +54,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const [activeTab, setActiveTab] = useState('pricing-dashboard');
   const [guests, setGuests] = useState<any[]>([]);
   const [loadingGuests, setLoadingGuests] = useState(false);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loadingRooms, setLoadingRooms] = useState(false);
+  const [showRoomForm, setShowRoomForm] = useState(false);
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [roomFormData, setRoomFormData] = useState<Partial<Room>>({});
 
   // New state variables for dashboard data
   const [trendData, setTrendData] = useState<any[]>([]);
@@ -85,8 +95,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   useEffect(() => {
     if (activeTab === 'guests') {
       fetchGuests();
+    } else if (activeTab === 'rooms') {
+      fetchRooms();
     }
   }, [activeTab]);
+
+  const fetchRooms = async () => {
+    setLoadingRooms(true);
+    try {
+      const { data, error } = await supabase.from('rooms').select('*').order('created_at', { ascending: false });
+      if (error) throw error;
+      setRooms(data || []);
+    } catch (error) {
+      console.error('Error fetching rooms:', error);
+    } finally {
+      setLoadingRooms(false);
+    }
+  };
+
+  const handleSaveRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingRoom) {
+        const { error } = await supabase.from('rooms').update(roomFormData).eq('id', editingRoom.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('rooms').insert([roomFormData]);
+        if (error) throw error;
+      }
+      setShowRoomForm(false);
+      setEditingRoom(null);
+      setRoomFormData({});
+      fetchRooms();
+    } catch (error) {
+      console.error('Error saving room:', error);
+    }
+  };
+
+  const handleDeleteRoom = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this room?')) return;
+    try {
+      const { error } = await supabase.from('rooms').delete().eq('id', id);
+      if (error) throw error;
+      fetchRooms();
+    } catch (error) {
+      console.error('Error deleting room:', error);
+    }
+  };
 
   const fetchGuests = async () => {
     setLoadingGuests(true);
@@ -563,6 +618,148 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     </div>
   );
 
+  const renderRooms = () => (
+    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+      <div className="p-8 border-b border-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h3 className="text-xl font-bold text-slate-900">Rooms Management</h3>
+          <p className="text-sm text-slate-400">Manage all rooms and suites</p>
+        </div>
+        <div className="flex gap-2">
+          <button 
+            onClick={fetchRooms} 
+            disabled={loadingRooms}
+            className="text-[#0066ff] hover:bg-blue-50 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={loadingRooms ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+          <button 
+            onClick={() => {
+              setEditingRoom(null);
+              setRoomFormData({ status: 'Available', capacity: 2 });
+              setShowRoomForm(true);
+            }}
+            className="bg-[#0066ff] hover:bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors"
+          >
+            <Plus size={16} />
+            Add Room
+          </button>
+        </div>
+      </div>
+
+      {showRoomForm && (
+        <div className="p-8 bg-slate-50 border-b border-slate-100">
+          <h4 className="font-bold text-slate-900 mb-4">{editingRoom ? 'Edit Room' : 'Add New Room'}</h4>
+          <form onSubmit={handleSaveRoom} className="space-y-4 max-w-2xl">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Room Name</label>
+                <input required type="text" value={roomFormData.name || ''} onChange={e => setRoomFormData({...roomFormData, name: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff]" placeholder="e.g. Ocean View Suite 101" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Room Type</label>
+                <select required value={roomFormData.type || ''} onChange={e => setRoomFormData({...roomFormData, type: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff] bg-white">
+                  <option value="" disabled>Select a room type</option>
+                  <optgroup label="Bishoftu (Debre Zeyit)">
+                    <option value="Royal Presidential Suite">Royal Presidential Suite</option>
+                    <option value="Lake Side">Lake Side</option>
+                    <option value="Splash View Suite">Splash View Suite</option>
+                    <option value="Gateway Retreat">Gateway Retreat</option>
+                    <option value="Standard Twin">Standard Twin</option>
+                    <option value="Standard King">Standard King</option>
+                    <option value="Family Room">Family Room</option>
+                  </optgroup>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Price / Night ($)</label>
+                <input required type="number" min="0" value={roomFormData.price || ''} onChange={e => setRoomFormData({...roomFormData, price: parseFloat(e.target.value)})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff]" placeholder="450" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Capacity</label>
+                <input required type="number" min="1" value={roomFormData.capacity || ''} onChange={e => setRoomFormData({...roomFormData, capacity: parseInt(e.target.value)})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff]" placeholder="2" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Suggested Price ($)</label>
+                <input type="number" min="0" value={roomFormData.suggested_price || ''} onChange={e => setRoomFormData({...roomFormData, suggested_price: parseFloat(e.target.value)})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff] bg-amber-50 placeholder-amber-300" placeholder="AI Suggested" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Status</label>
+                <select required value={roomFormData.status || 'Available'} onChange={e => setRoomFormData({...roomFormData, status: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff] bg-white">
+                  <option value="Available">Available</option>
+                  <option value="Booked">Booked</option>
+                  <option value="Maintenance">Maintenance</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Description</label>
+                <textarea value={roomFormData.description || ''} onChange={e => setRoomFormData({...roomFormData, description: e.target.value})} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff]" rows={3}></textarea>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={() => setShowRoomForm(false)} className="px-4 py-2 font-bold text-slate-500 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
+              <button type="submit" className="px-4 py-2 font-bold text-white bg-[#0066ff] hover:bg-blue-600 rounded-xl transition-colors">Save Room</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-50/50">
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Name</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Type</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Price</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Suggested</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Cap.</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Status</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {loadingRooms ? (
+              <tr>
+                <td colSpan={7} className="px-8 py-12 text-center text-slate-400 font-bold">
+                  <RefreshCw size={24} className="animate-spin text-[#0066ff] mx-auto mb-2" /> Loading rooms...
+                </td>
+              </tr>
+            ) : rooms.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-8 py-12 text-center text-slate-500">No rooms found.</td>
+              </tr>
+            ) : (
+              rooms.map((room) => (
+                <tr key={room.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="px-8 py-6 font-bold text-slate-900">{room.name}</td>
+                  <td className="px-8 py-6 text-slate-500">{room.type}</td>
+                  <td className="px-8 py-6 font-bold text-slate-900">${room.price}</td>
+                  <td className="px-8 py-6 text-amber-600 font-bold">{room.suggested_price ? `$${room.suggested_price}` : '-'}</td>
+                  <td className="px-8 py-6 text-slate-500">{room.capacity}</td>
+                  <td className="px-8 py-6">
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                      room.status === 'Available' ? 'bg-green-100 text-green-600' : 
+                      room.status === 'Booked' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
+                    }`}>
+                      {room.status}
+                    </span>
+                  </td>
+                  <td className="px-8 py-6 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => { setEditingRoom(room); setRoomFormData(room); setShowRoomForm(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-colors"><Edit2 size={16} /></button>
+                      <button onClick={() => handleDeleteRoom(room.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={16} /></button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar */}
@@ -594,6 +791,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             { id: 'pricing-approvals', label: 'Pricing Approvals', icon: <CheckCircle2 size={20} /> },
             { id: 'pricing-calendar', label: 'Pricing Calendar', icon: <Calendar size={20} /> },
             { id: 'resorts', label: 'Resorts', icon: <Hotel size={20} /> },
+            { id: 'rooms', label: 'Rooms', icon: <DoorOpen size={20} /> },
             { id: 'guests', label: 'Guests', icon: <Users size={20} /> },
             { id: 'settings', label: 'Settings', icon: <Settings size={20} /> },
           ].map((item) => (
@@ -669,6 +867,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               {activeTab === 'pricing-approvals' && renderPricingApprovals()}
               {activeTab === 'pricing-calendar' && renderPricingCalendar()}
               {activeTab === 'resorts' && renderResortsApprovals()}
+              {activeTab === 'rooms' && renderRooms()}
               {activeTab === 'guests' && renderGuests()}
               {['settings'].includes(activeTab) && (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-400">

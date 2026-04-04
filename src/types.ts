@@ -55,3 +55,15 @@ export interface Preferences {
   tagline?: string;
   recommended_services?: string[];
 }
+
+export interface Room {
+  id: string;
+  name: string;
+  type: string;
+  price: number;
+  suggested_price?: number;
+  capacity: number;
+  status: 'Available' | 'Maintenance' | 'Booked' | string;
+  description?: string;
+  created_at?: string;
+}

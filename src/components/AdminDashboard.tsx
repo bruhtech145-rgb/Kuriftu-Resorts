@@ -382,6 +382,92 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     </div>
   );
 
+  const resortApprovals = [
+    { id: 1, resort: 'Kuriftu Bishoftu', occupancy: '92%', currentRate: '$280', suggestedRate: '$325', change: '+16%', reason: 'High Occupancy detected', status: 'Pending' },
+    { id: 2, resort: 'Kuriftu Entoto', occupancy: '45%', currentRate: '$180', suggestedRate: '$155', change: '-14%', reason: 'Low weekday demand', status: 'Pending' },
+    { id: 3, resort: 'Kuriftu Lake Tana', occupancy: '78%', currentRate: '$220', suggestedRate: '$245', change: '+11%', reason: 'Local festival upcoming', status: 'Pending' },
+    { id: 4, resort: 'Kuriftu Awash', occupancy: '85%', currentRate: '$195', suggestedRate: '$225', change: '+15%', reason: 'Weekend peak forecast', status: 'Pending' },
+  ];
+
+  const renderResortsApprovals = () => (
+    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+      <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+        <div>
+          <h3 className="text-xl font-bold text-slate-900">Resort Rate Approvals</h3>
+          <p className="text-sm text-slate-400">AI-driven adjustments based on occupancy and time</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
+            4 Pending
+          </span>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-50/50">
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Resort Name</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Occupancy</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Current Rate</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">AI Suggested</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Change</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Reason</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {resortApprovals.map((approval) => (
+              <tr key={approval.id} className="hover:bg-slate-50/50 transition-colors group">
+                <td className="px-8 py-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-[#0066ff]">
+                      <Hotel size={18} />
+                    </div>
+                    <span className="font-bold text-slate-900">{approval.resort}</span>
+                  </div>
+                </td>
+                <td className="px-8 py-6">
+                  <div className="flex items-center gap-2">
+                    <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full ${parseInt(approval.occupancy) > 80 ? 'bg-orange-500' : 'bg-blue-500'}`} 
+                        style={{ width: approval.occupancy }} 
+                      />
+                    </div>
+                    <span className="text-sm font-bold text-slate-600">{approval.occupancy}</span>
+                  </div>
+                </td>
+                <td className="px-8 py-6 font-bold text-slate-400">{approval.currentRate}</td>
+                <td className="px-8 py-6 font-bold text-[#0066ff]">{approval.suggestedRate}</td>
+                <td className="px-8 py-6">
+                  <span className={`font-bold text-xs ${approval.change.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>
+                    {approval.change}
+                  </span>
+                </td>
+                <td className="px-8 py-6">
+                  <div className="flex items-center gap-2 text-slate-500 text-xs italic">
+                    <Clock size={14} />
+                    {approval.reason}
+                  </div>
+                </td>
+                <td className="px-8 py-6 text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    <button className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-green-500/20 active:scale-95">
+                      Approve
+                    </button>
+                    <button className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all active:scale-95">
+                      Reject
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 flex">
       {/* Sidebar */}
@@ -487,7 +573,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               {activeTab === 'pricing-dashboard' && renderPricingDashboard()}
               {activeTab === 'pricing-approvals' && renderPricingApprovals()}
               {activeTab === 'pricing-calendar' && renderPricingCalendar()}
-              {['resorts', 'guests', 'settings'].includes(activeTab) && (
+              {activeTab === 'resorts' && renderResortsApprovals()}
+              {['guests', 'settings'].includes(activeTab) && (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-400">
                   <Hotel size={64} className="mb-4 opacity-20" />
                   <p className="text-xl font-bold">Module coming soon</p>

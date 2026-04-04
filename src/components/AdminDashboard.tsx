@@ -533,8 +533,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
       <div className="p-8 border-b border-slate-50 flex items-center justify-between">
         <div>
           <h3 className="text-xl font-bold text-slate-900">Pricing Approvals</h3>
-          <p className="text-sm text-slate-400">5 pending approvals</p>
+          <p className="text-sm text-slate-400">{pricingApprovals.filter(a => a.status === 'Pending').length} pending approvals</p>
         </div>
+        <button
+          onClick={handleBulkApprove}
+          className="px-6 py-2 bg-green-500 text-white rounded-xl text-sm font-bold hover:bg-green-600 transition-all shadow-lg shadow-green-500/20"
+        >
+          Approve All Pending
+        </button>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left border-collapse">
@@ -662,6 +668,79 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     }
   };
 
+  const handleBulkApprove = async () => {
+    try {
+      const { error } = await supabase
+        .from('pricing_approvals')
+        .update({ status: 'Approved' })
+        .eq('status', 'Pending');
+      
+      if (error) throw error;
+      
+      alert('All pending price suggestions have been approved and are now active for member bookings!');
+      fetchDashboardData();
+    } catch (err) {
+      console.error('Bulk approval error:', err);
+      alert('Failed to approve all suggestions.');
+    }
+  };
+
+  const handleBulkGenerateForecasts = async () => {
+    setIsCalendarPredicting(true);
+    try {
+      // 1. Get unique room types
+      const uniqueTypes = [...new Set(rooms.map(r => r.type))];
+      if (uniqueTypes.length === 0) {
+        // Fallback to services if rooms table is empty for some reason
+        const { data: services } = await supabase.from('services').select('name');
+        if (services) uniqueTypes.push(...services.map(s => s.name));
+      }
+
+      const daysToGenerate = calendarTimeframe === 'month' ? 30 : 7;
+      const start = new Date(calendarStartDate);
+      const forecasts = [];
+
+      for (const type of uniqueTypes) {
+        // Find current base price for this type
+        const baseRoom = rooms.find(r => r.type === type);
+        const basePrice = baseRoom?.price || 200;
+
+        for (let i = 0; i < daysToGenerate; i++) {
+          const currentDate = addDays(start, i);
+          const dayOfWeek = currentDate.getDay();
+          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+          
+          let suggested = basePrice;
+          if (isWeekend) suggested = Math.round(basePrice * 1.25);
+          if (Math.random() > 0.8) suggested = Math.round(suggested * 1.15); // Random surge
+
+          const changePercent = `${(((suggested - basePrice) / basePrice) * 100).toFixed(1)}%`;
+
+          forecasts.push({
+            room_type: type,
+            target_date: format(currentDate, 'MMM d, yyyy'),
+            current_price: basePrice,
+            suggested_price: suggested,
+            change_percent: changePercent.startsWith('-') ? changePercent : `+${changePercent}`,
+            status: 'Pending'
+          });
+        }
+      }
+
+      // 2. Insert into pricing_approvals
+      const { error } = await supabase.from('pricing_approvals').insert(forecasts);
+      if (error) throw error;
+
+      alert(`Successfully generated ${forecasts.length} AI price forecasts across ${uniqueTypes.length} room categories!`);
+      fetchDashboardData(); // Refresh approvals tab
+    } catch (err) {
+      console.error('Bulk forecast error:', err);
+      alert('Failed to generate bulk forecasts.');
+    } finally {
+      setIsCalendarPredicting(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'pricing-calendar' && calendarDaysData.length === 0) {
       handleGenerateCalendarPrediction();
@@ -695,23 +774,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         </div>
       </div>
 
-      <div className="mb-8 flex flex-col sm:flex-row items-center gap-4 justify-between bg-slate-50 p-4 rounded-3xl border border-slate-100">
-        <div className="flex items-center gap-4 w-full sm:w-auto">
+      <div className="mb-8 flex flex-col lg:flex-row items-center gap-4 justify-between bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+        <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
           <input 
             type="date"
             value={calendarStartDate}
             onChange={(e) => setCalendarStartDate(e.target.value)}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 text-sm font-bold text-slate-900"
+            className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 text-sm font-bold text-slate-900"
           />
           <select 
             value={calendarTimeframe}
             onChange={(e) => setCalendarTimeframe(e.target.value as 'week' | 'month')}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 text-sm font-bold text-slate-900 appearance-none pr-10"
-            style={{ backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1em' }}
+            className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 text-sm font-bold text-slate-900"
           >
             <option value="week">1-Week Forecast</option>
             <option value="month">1-Month Forecast</option>
           </select>
+          <button
+            onClick={handleBulkGenerateForecasts}
+            disabled={isCalendarPredicting}
+            className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-2xl text-sm font-bold hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-900/10 disabled:opacity-50"
+          >
+            <SparklesIcon size={18} className={isCalendarPredicting ? 'animate-spin' : ''} />
+            {isCalendarPredicting ? 'Calculating...' : 'Bulk Forecast All Room Types'}
+          </button>
         </div>
         <button 
           onClick={handleGenerateCalendarPrediction}

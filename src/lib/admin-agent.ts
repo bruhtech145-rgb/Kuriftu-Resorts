@@ -333,19 +333,38 @@ const ADMIN_TOOLS = [
     type: 'function' as const,
     function: {
       name: 'createService',
-      description: 'Create a new service, package, or experience in the database. Use when admin asks to create packages, add rooms, activities, dining, or wellness. This writes to the DB — guests can immediately book it.',
+      description: 'Create a new service, package, or experience (NOT rooms). Use for activities, dining, wellness, packages. For rooms use createRoom instead.',
       parameters: {
         type: 'object',
         properties: {
           name: { type: 'string', description: 'Service/package name' },
           description: { type: 'string', description: 'Detailed description' },
-          category_id: { type: 'string', enum: ['Rooms', 'Activities', 'Dining', 'Wellness', 'Packages'], description: 'Category' },
+          category_id: { type: 'string', enum: ['Activities', 'Dining', 'Wellness', 'Packages'], description: 'Category' },
           base_price: { type: 'number', description: 'Price in ETB' },
-          duration_minutes: { type: 'number', description: 'Duration in minutes (1440 for per-night)' },
+          duration_minutes: { type: 'number', description: 'Duration in minutes' },
           max_capacity: { type: 'number', description: 'Max guests' },
-          tags: { type: 'array', items: { type: 'string' }, description: 'Tags like ["Lenten", "Family"]' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Tags' },
         },
         required: ['name', 'description', 'category_id', 'base_price'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'createRoom',
+      description: 'Create new room(s) at the resort. Creates both the service listing and individual room records in the rooms table. Use when admin asks to add rooms, create room types, or increase room inventory.',
+      parameters: {
+        type: 'object',
+        properties: {
+          roomType: { type: 'string', description: 'Room type name e.g. "Deluxe Suite", "Garden View", "Standard Room"' },
+          description: { type: 'string', description: 'Room description' },
+          pricePerNight: { type: 'number', description: 'Price per night in ETB' },
+          capacity: { type: 'number', description: 'Max guests per room' },
+          count: { type: 'number', description: 'How many rooms of this type to create' },
+          tags: { type: 'array', items: { type: 'string' }, description: 'Tags like ["Lake View", "Balcony"]' },
+        },
+        required: ['roomType', 'pricePerNight', 'count'],
       },
     },
   },
@@ -430,6 +449,79 @@ async function executeAdminTool(name: string, args: Record<string, any>): Promis
       if (error) return JSON.stringify({ error: `Failed: ${error.message}` });
       return JSON.stringify({ success: true, id: data.id, name: data.name, category: data.category_id, price: `${data.base_price.toLocaleString()} ETB`, message: `Created "${data.name}" at ETB ${data.base_price.toLocaleString()}. Now live and bookable.` });
     }
+    case 'createRoom': {
+      const roomType = args.roomType;
+      const count = Math.min(args.count || 1, 50); // Safety limit
+      const pricePerNight = args.pricePerNight;
+      const capacity = args.capacity || 2;
+      const description = args.description || `${roomType} at Kuriftu Resort`;
+      const tags = args.tags || [];
+
+      // 1. Create or find the service listing for this room type
+      const { data: existingService } = await supabase
+        .from('services')
+        .select('id')
+        .eq('name', roomType)
+        .eq('category_id', 'Rooms')
+        .single();
+
+      let serviceId = existingService?.id;
+      if (!serviceId) {
+        const { data: newService, error: svcError } = await supabase.from('services').insert({
+          category_id: 'Rooms',
+          name: roomType,
+          description,
+          base_price: pricePerNight,
+          duration_minutes: 1440,
+          max_capacity: capacity,
+          is_bookable: true,
+          status: 'Active',
+          tags,
+          images: [],
+        }).select().single();
+        if (svcError) return JSON.stringify({ error: `Failed to create service: ${svcError.message}` });
+        serviceId = newService.id;
+      }
+
+      // 2. Get existing room count to number them properly
+      const { data: existingRooms } = await supabase
+        .from('rooms')
+        .select('room_number')
+        .eq('type', roomType)
+        .order('room_number', { ascending: false })
+        .limit(1);
+
+      const lastNumber = existingRooms?.[0]?.room_number
+        ? parseInt(existingRooms[0].room_number.replace(/\D/g, '')) || 100
+        : 100;
+
+      // 3. Create individual room records
+      const rooms = [];
+      for (let i = 1; i <= count; i++) {
+        rooms.push({
+          room_number: `${lastNumber + i}`,
+          type: roomType,
+          price: pricePerNight,
+          capacity,
+          status: 'Available',
+          description,
+        });
+      }
+
+      const { error: roomError } = await supabase.from('rooms').insert(rooms);
+      if (roomError) return JSON.stringify({ error: `Failed to create rooms: ${roomError.message}` });
+
+      return JSON.stringify({
+        success: true,
+        serviceId,
+        roomType,
+        roomsCreated: count,
+        roomNumbers: rooms.map(r => r.room_number),
+        pricePerNight: `${pricePerNight.toLocaleString()} ETB`,
+        capacity,
+        message: `Created ${count} "${roomType}" room(s) (${rooms.map(r => `#${r.room_number}`).join(', ')}) at ETB ${pricePerNight.toLocaleString()}/night. Service listing ${existingService ? 'already existed' : 'created'}. Rooms are now available for booking.`,
+      });
+    }
     case 'updateServicePrice': {
       const { error } = await supabase.from('services').update({ base_price: args.newPrice }).eq('id', args.serviceId);
       if (error) return JSON.stringify({ error: error.message });
@@ -487,10 +579,10 @@ export async function adminChat(message: string, history: { role: string; conten
   if (!SUPABASE_URL) return "AI not configured.";
 
   const systemPrompt = `You are the AI Operations Manager for Kuriftu Resorts, Ethiopia. You READ and WRITE to the database.
-Tools: createService, updateServicePrice, listCurrentServices, deactivateService, createAlert, getLiveStats.
-CRITICAL: When asked to create packages, USE createService tool for EACH one. Do NOT just describe them.
-After creating, call createAlert to notify the team. Use getLiveStats for data before decisions.
-Categories: Rooms, Activities, Dining, Wellness, Packages. Currency: ETB. Be concise and data-driven.`;
+Tools: createService (activities/dining/wellness/packages), createRoom (hotel rooms), updateServicePrice, listCurrentServices, deactivateService, createAlert, getLiveStats.
+CRITICAL: For ROOMS use createRoom (creates service listing + individual room records with room numbers). For other services use createService.
+When asked to create, USE the tools — do NOT just describe. After creating, call createAlert to notify the team.
+Currency: ETB. Be concise and data-driven.`;
 
   let conversationMessages: Record<string, any>[] = [
     { role: 'system', content: systemPrompt },
@@ -510,13 +602,24 @@ Categories: Rooms, Activities, Dining, Wellness, Packages. Currency: ETB. Be con
           tools: ADMIN_TOOLS,
           tool_choice: 'auto',
           temperature: 0.7,
-          max_tokens: 1024,
+          max_tokens: 512,
         }),
       });
 
-      if (!response.ok) throw new Error('Groq error');
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error('Admin AI proxy error:', response.status, errText);
+        if (response.status === 429) {
+          return "I'm being rate limited right now. Please wait a minute and try again.";
+        }
+        throw new Error(`Proxy error ${response.status}`);
+      }
       const data = await response.json();
-      const choice = data.choices[0];
+      const choice = data.choices?.[0];
+      if (!choice) {
+        console.error('No choice in response:', data);
+        return "I got an unexpected response. Please try again.";
+      }
 
       if (choice.finish_reason === 'stop' || !choice.message.tool_calls) {
         const reply = choice.message.content || "Done. Check the dashboard for updates.";
@@ -526,7 +629,11 @@ Categories: Rooms, Activities, Dining, Wellness, Packages. Currency: ETB. Be con
 
       conversationMessages.push(choice.message);
       for (const tc of choice.message.tool_calls) {
-        const args = JSON.parse(tc.function.arguments || '{}');
+        let args: Record<string, any> = {};
+        try {
+          const parsed = JSON.parse(tc.function.arguments || '{}');
+          args = parsed && typeof parsed === 'object' ? parsed : {};
+        } catch { args = {}; }
         const result = await executeAdminTool(tc.function.name, args);
         conversationMessages.push({ role: 'tool', content: result, tool_call_id: tc.id });
       }
@@ -565,17 +672,12 @@ async function loadPersistedAlerts(): Promise<AdminAlert[]> {
 // ─── Trigger Cron Manually ───
 
 export async function triggerAgentCron(): Promise<{ success: boolean; summary?: string; alerts?: number }> {
+  // Run analysis locally instead of calling edge function (avoids CORS if not deployed)
   try {
-    const url = import.meta.env.VITE_PUBLIC_SUPABASE_URL;
-    const anonKey = import.meta.env.VITE_PUBLIC_SUPABASE_ANON_KEY;
-    const res = await fetch(`${url}/functions/v1/ai-agent-cron`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${anonKey}`, 'Content-Type': 'application/json' },
-    });
-    const result = await res.json();
-    return { success: result.success, summary: result.summary, alerts: result.alerts };
+    const result = await runAdminAnalysis();
+    return { success: true, summary: result.summary, alerts: result.alerts.length };
   } catch (e) {
-    console.error('Trigger cron error:', e);
+    console.error('Agent run error:', e);
     return { success: false };
   }
 }

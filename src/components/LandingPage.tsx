@@ -18,7 +18,8 @@ import {
   X,
   Settings,
   Sparkles,
-  Palmtree
+  Palmtree,
+  TrendingUp
 } from 'lucide-react';
 import { AIItineraryBuilder } from './AIItineraryBuilder';
 import { RegisterModal } from './RegisterModal';
@@ -41,6 +42,26 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
   const [checkOut, setCheckOut] = useState('2026-04-20');
   const [searchResults, setSearchResults] = useState<any[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [activeSection, setActiveSection] = useState('resorts');
+
+  // Track which section is in view for nav highlight
+  useEffect(() => {
+    const sections = ['resorts', 'features', 'services', 'how-it-works', 'about'];
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          setActiveSection(entry.target.id);
+        }
+      }
+    }, { threshold: 0.3, rootMargin: '-80px 0px 0px 0px' });
+
+    sections.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   // Fetch real services from Supabase
   const [featuredRooms, setFeaturedRooms] = useState<any[]>([]);
@@ -175,11 +196,22 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
               </div>
               
               <div className="hidden lg:flex items-center gap-8 text-sm font-bold text-slate-500">
-                <a href="#resorts" className="text-[#0066ff] relative after:absolute after:bottom-[-28px] after:left-0 after:right-0 after:h-1 after:bg-[#0066ff] after:rounded-full">Resorts</a>
-                <a href="#features" className="hover:text-[#0066ff] transition-colors">Features</a>
-                <a href="#services" className="hover:text-[#0066ff] transition-colors">Services</a>
-                <a href="#how-it-works" className="hover:text-[#0066ff] transition-colors">How It Works</a>
-                <a href="#about" className="hover:text-[#0066ff] transition-colors">About Us</a>
+                {[
+                  { id: 'resorts', label: 'Resorts' },
+                  { id: 'features', label: 'Features' },
+                  { id: 'services', label: 'Services' },
+                  { id: 'how-it-works', label: 'How It Works' },
+                  { id: 'about', label: 'About Us' },
+                ].map(nav => (
+                  <a
+                    key={nav.id}
+                    href={`#${nav.id}`}
+                    onClick={() => setActiveSection(nav.id)}
+                    className={`transition-colors relative ${activeSection === nav.id ? 'text-[#0066ff] after:absolute after:bottom-[-28px] after:left-0 after:right-0 after:h-1 after:bg-[#0066ff] after:rounded-full' : 'hover:text-[#0066ff]'}`}
+                  >
+                    {nav.label}
+                  </a>
+                ))}
               </div>
             </div>
 
@@ -277,7 +309,7 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
       </AnimatePresence>
 
       {/* Hero Section with Trip.com Style Search */}
-      <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
+      <section id="resorts" className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img
             src="https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=1920"
@@ -468,7 +500,7 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
       )}
 
       {/* Main Content — Resorts */}
-      <main id="resorts" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         {/* Tabs */}
         <div className="flex items-center gap-6 mb-8 border-b border-slate-200 overflow-x-auto">
           {['rooms', 'activities', 'dining', 'wellness', 'packages'].map(tab => {
@@ -565,12 +597,15 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
-              { icon: <Sparkles size={28} />, title: 'AI Concierge', desc: 'Your personal AI assistant knows your preferences, suggests experiences, and books everything — from rooms to spa treatments — in seconds.', color: 'bg-blue-50 text-[#0066ff]' },
-              { icon: <Calendar size={28} />, title: 'Smart Booking', desc: 'Real-time availability, dynamic pricing, and instant confirmations. Book rooms, activities, dining, and wellness all in one place.', color: 'bg-amber-50 text-amber-600' },
-              { icon: <Star size={28} />, title: 'Ethiopian Culture', desc: 'AI-aware of Ethiopian holidays, fasting seasons, and cultural events. Menu and activity suggestions adapt to Timkat, Meskel, Fasika, and more.', color: 'bg-green-50 text-green-600' },
-              { icon: <Users size={28} />, title: 'Loyalty Rewards', desc: 'Earn points with every booking. Progress through Explorer, Trekker, Summit, and Pinnacle tiers for exclusive perks and upgrades.', color: 'bg-purple-50 text-purple-600' },
-              { icon: <MapPin size={28} />, title: '7 Stunning Locations', desc: 'From Bishoftu crater lakes to Lake Tana, Entoto mountains to Awash — each resort offers a unique Ethiopian landscape and experience.', color: 'bg-rose-50 text-rose-600' },
-              { icon: <Coffee size={28} />, title: 'Signature Experiences', desc: 'Traditional coffee ceremonies, Ethiopian spa treatments with organic coffee scrubs, and farm-to-table dining that celebrates local flavors.', color: 'bg-stone-100 text-stone-700' },
+              { icon: <Sparkles size={28} />, title: 'Agentic AI', desc: 'Our autonomous AI agent runs 24/7 — creating packages, adjusting pricing, pushing alerts, and managing operations without human intervention. It thinks, decides, and acts.', color: 'bg-blue-50 text-[#0066ff]', badge: 'Core AI' },
+              { icon: <TrendingUp size={28} />, title: 'Dynamic Price Prediction', desc: 'AI predicts optimal room pricing based on occupancy, Ethiopian holidays, fasting seasons, weekend demand, and competitor analysis — maximizing revenue automatically.', color: 'bg-amber-50 text-amber-600', badge: 'Revenue AI' },
+              { icon: <Search size={28} />, title: 'Market Prediction', desc: 'Forecasts demand 7-30 days ahead using Ethiopian calendar events (Timkat, Meskel, Fasika), tourism seasons, and historical booking patterns to stay ahead of the market.', color: 'bg-green-50 text-green-600', badge: 'Forecast AI' },
+              { icon: <Users size={28} />, title: 'Occupancy-Based Auto Actions', desc: 'When occupancy drops below 30%, AI launches promotions and flash deals. Above 80%, it activates premium pricing. Cancellations trigger automatic waitlist notifications.', color: 'bg-red-50 text-red-600', badge: 'Auto-Pilot' },
+              { icon: <Star size={28} />, title: 'AI Concierge & Booking', desc: 'Personal AI assistant that knows each guest — their preferences, past bookings, dietary needs. Books rooms, spa, dining via chat. Works on web and Telegram.', color: 'bg-purple-50 text-purple-600', badge: 'Guest AI' },
+              { icon: <Calendar size={28} />, title: 'Ethiopian Calendar Intelligence', desc: 'Built-in awareness of all Ethiopian holidays, Orthodox fasting periods, and tourism seasons. Auto-adjusts menus (vegan for fasting), pricing, and staffing recommendations.', color: 'bg-stone-100 text-stone-700', badge: 'Cultural AI' },
+              { icon: <MapPin size={28} />, title: '7 Resort Locations', desc: 'From Bishoftu crater lakes to Lake Tana, Entoto mountains to Awash Falls — each property offers a unique Ethiopian landscape with AI-optimized operations.', color: 'bg-rose-50 text-rose-600', badge: null },
+              { icon: <Coffee size={28} />, title: 'Signature Experiences', desc: 'Traditional coffee spa, heritage tours, lakeside BBQ with live music, and farm-to-table dining — all bookable through AI with personalized recommendations.', color: 'bg-cyan-50 text-cyan-600', badge: null },
+              { icon: <ShieldCheck size={28} />, title: 'Loyalty & Rewards', desc: 'AI tracks guest spending and preferences to auto-upgrade loyalty tiers: Explorer → Trekker → Summit → Pinnacle. Each tier unlocks exclusive perks and priority booking.', color: 'bg-indigo-50 text-indigo-600', badge: null },
             ].map((feature, i) => (
               <motion.div
                 key={feature.title}
@@ -580,11 +615,18 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
                 transition={{ delay: i * 0.1 }}
                 className="group p-8 rounded-[2rem] border border-slate-100 hover:border-[#0066ff]/20 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300"
               >
-                <div className={`w-14 h-14 ${feature.color} rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform`}>
-                  {feature.icon}
+                <div className="flex items-start justify-between mb-6">
+                  <div className={`w-14 h-14 ${feature.color} rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                    {feature.icon}
+                  </div>
+                  {feature.badge && (
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#0066ff] bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100">
+                      {feature.badge}
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-xl font-bold text-slate-900 mb-3">{feature.title}</h3>
-                <p className="text-slate-500 leading-relaxed">{feature.desc}</p>
+                <p className="text-slate-500 leading-relaxed text-sm">{feature.desc}</p>
               </motion.div>
             ))}
           </div>
@@ -747,7 +789,6 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
         onSwitchToRegister={() => { setIsLoginOpen(false); setIsRegisterOpen(true); }}
-        onGoogleLogin={onLogin}
       />
 
       {/* Registration Modal */}

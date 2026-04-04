@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   full_name TEXT,
   phone TEXT,
   is_admin BOOLEAN DEFAULT false NOT NULL,
+  average_spend NUMERIC DEFAULT 0,
+  points_balance INTEGER DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT now() NOT NULL
 );
 
@@ -42,6 +44,19 @@ SELECT
   raw_user_meta_data->>'phone'
 FROM auth.users
 ON CONFLICT (id) DO NOTHING;
+
+-- Seed guest profiles for Marketing Segmentation AI testing
+INSERT INTO public.profiles (id, email, full_name, phone, average_spend, points_balance, is_admin)
+VALUES 
+  (gen_random_uuid(), 'premium@guest.com', 'Alexander Premium', '+251 911 000001', 450.50, 8500, false),
+  (gen_random_uuid(), 'standard1@guest.com', 'Sarah Standard', '+251 911 000002', 220.00, 3200, false),
+  (gen_random_uuid(), 'standard2@guest.com', 'Michael Midtier', '+251 911 000003', 185.75, 2800, false),
+  (gen_random_uuid(), 'budget1@guest.com', 'Billy Budget', '+251 911 000004', 85.00, 450, false),
+  (gen_random_uuid(), 'budget2@guest.com', 'Bella Basic', '+251 911 000005', 45.30, 120, false),
+  (gen_random_uuid(), 'loyal@guest.com', 'Larry Loyal', '+251 911 000006', 310.00, 12500, false)
+ON CONFLICT (email) DO UPDATE SET 
+  average_spend = EXCLUDED.average_spend,
+  points_balance = EXCLUDED.points_balance;
 
 -- 2. Create tables for Dashboard Metrics
 

@@ -15,9 +15,15 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function callGroq(body: Record<string, unknown>, model: string, maxTokens: number): Promise<Response> {
+async function callGroq(body: Record<string, unknown>, model: string, maxTokens: number, useTools: boolean): Promise<Response> {
   // Trim messages to reduce token usage — keep system + last 8 messages
+  // Also strip tool messages when not using tools (8b can't handle them)
   let messages = body.messages as any[];
+  if (!useTools) {
+    messages = messages.filter((m: any) => m.role !== 'tool');
+    // Strip tool_calls from assistant messages
+    messages = messages.map((m: any) => m.tool_calls ? { role: m.role, content: m.content || '(action completed)' } : m);
+  }
   if (messages.length > 10) {
     const system = messages.find((m: any) => m.role === 'system');
     const recent = messages.filter((m: any) => m.role !== 'system').slice(-8);
@@ -33,8 +39,7 @@ async function callGroq(body: Record<string, unknown>, model: string, maxTokens:
     body: JSON.stringify({
       model,
       messages,
-      tools: body.tools || undefined,
-      tool_choice: body.tool_choice || undefined,
+      ...(useTools && body.tools ? { tools: body.tools, tool_choice: body.tool_choice } : {}),
       temperature: body.temperature ?? 0.7,
       max_tokens: maxTokens,
     }),
@@ -56,14 +61,14 @@ Deno.serve(async (req: Request) => {
   try {
     const body = await req.json();
 
-    // Try primary model
-    let response = await callGroq(body, 'llama-3.3-70b-versatile', body.max_tokens ?? 512);
+    // Try primary model (with tools)
+    let response = await callGroq(body, 'llama-3.3-70b-versatile', body.max_tokens ?? 512, true);
 
-    // Rate limited on 70b — wait briefly, try 8b
+    // Rate limited on 70b — wait briefly, try 8b WITHOUT tools (8b is bad at tool calling)
     if (response.status === 429) {
-      console.log('Rate limited on 70b, waiting 2s then trying 8b...');
+      console.log('Rate limited on 70b, waiting 2s then trying 8b (no tools)...');
       await sleep(2000);
-      response = await callGroq(body, 'llama-3.1-8b-instant', 400);
+      response = await callGroq(body, 'llama-3.1-8b-instant', 400, false);
     }
 
     // Rate limited on 8b too — wait and retry once more
@@ -72,7 +77,7 @@ Deno.serve(async (req: Request) => {
       const waitMs = retryAfter ? Math.min(parseInt(retryAfter) * 1000, 10000) : 3000;
       console.log(`Rate limited on 8b too, waiting ${waitMs}ms...`);
       await sleep(waitMs);
-      response = await callGroq(body, 'llama-3.1-8b-instant', 300);
+      response = await callGroq(body, 'llama-3.1-8b-instant', 300, false);
     }
 
     if (!response.ok) {

@@ -27,6 +27,7 @@ import {
   Globe,
   RefreshCw,
   DoorOpen,
+  Package,
   Plus,
   Edit2,
   Trash2
@@ -43,8 +44,9 @@ import {
   Area
 } from 'recharts';
 import { supabase } from '../lib/supabase';
-import { runAdminAnalysis, triggerAgentCron, dismissAlert, DashboardAnalysis } from '../lib/admin-agent';
-import { AdminNotifications, AIInsightsPanel, AdminAIChat } from './AdminAIPanel';
+import { runAdminAnalysis, triggerAgentCron, DashboardAnalysis } from '../lib/admin-agent';
+import { AIInsightsPanel, AdminAIChat } from './AdminAIPanel';
+import AdminServices from './AdminServices';
 import { Sparkles as SparklesIcon } from 'lucide-react';
 import { Room, Booking } from '../types';
 import { format, addDays } from 'date-fns';
@@ -80,17 +82,108 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const [resortApprovals, setResortApprovals] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
+  // Live stats from Supabase
+  const [liveStats, setLiveStats] = useState({
+    avgPrice: 0,
+    totalRevenue: 0,
+    occupancyRate: 0,
+    totalBookings: 0,
+    totalMembers: 0,
+    todayBookings: 0,
+    cancellationRate: 0,
+  });
+
   // AI Agent state
   const [aiAnalysis, setAiAnalysis] = useState<DashboardAnalysis | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [cronRunning, setCronRunning] = useState(false);
-  const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([]);
   const [showAIChat, setShowAIChat] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
+    fetchLiveStats();
     runAIAnalysis();
   }, []);
+
+  const fetchLiveStats = async () => {
+    try {
+      const today = new Date();
+      const startOfDay = new Date(today); startOfDay.setHours(0, 0, 0, 0);
+
+      const [
+        { data: allBookings },
+        { data: todayBookings },
+        { data: services },
+        { data: members },
+        { data: cancelled },
+      ] = await Promise.all([
+        supabase.from('bookings').select('final_price, status, start_date, end_date, service_id'),
+        supabase.from('bookings').select('final_price, status').gte('created_at', startOfDay.toISOString()),
+        supabase.from('services').select('base_price').eq('status', 'Active'),
+        supabase.from('members').select('id'),
+        supabase.from('bookings').select('id').eq('status', 'Cancelled'),
+      ]);
+
+      const confirmed = (allBookings || []).filter(b => b.status === 'Confirmed');
+      const totalRevenue = confirmed.reduce((s, b) => s + (b.final_price || 0), 0);
+      const avgPrice = (services || []).length > 0
+        ? Math.round((services || []).reduce((s, svc) => s + svc.base_price, 0) / (services || []).length)
+        : 0;
+
+      // Occupancy: current stays
+      const nowIso = today.toISOString();
+      const currentStays = confirmed.filter(b => b.start_date <= nowIso && b.end_date >= startOfDay.toISOString());
+      const occupancyRate = Math.min(100, Math.round((currentStays.length > 0 ? currentStays.length : confirmed.length) / 42 * 100));
+
+      const totalAll = (allBookings || []).length;
+      const cancellationRate = totalAll > 0 ? Math.round(((cancelled || []).length / totalAll) * 100) : 0;
+
+      setLiveStats({
+        avgPrice,
+        totalRevenue,
+        occupancyRate,
+        totalBookings: confirmed.length,
+        totalMembers: (members || []).length,
+        todayBookings: (todayBookings || []).filter(b => b.status !== 'Cancelled').length,
+        cancellationRate,
+      });
+
+      // Build real trend data — revenue & booking count per day (last 14 days)
+      // Uses created_at (when booking was placed) not start_date
+      const { data: recentBookings } = await supabase
+        .from('bookings')
+        .select('final_price, status, created_at')
+        .gte('created_at', new Date(Date.now() - 14 * 86400000).toISOString())
+        .order('created_at', { ascending: true });
+
+      const revenueByDay: Record<string, { revenue: number; count: number }> = {};
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        revenueByDay[key] = { revenue: 0, count: 0 };
+      }
+      (recentBookings || []).filter(b => b.status === 'Confirmed').forEach(b => {
+        const d = new Date(b.created_at || '');
+        const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        if (revenueByDay[key] !== undefined) {
+          revenueByDay[key].revenue += (b.final_price || 0);
+          revenueByDay[key].count += 1;
+        }
+      });
+
+      const realTrends = Object.entries(revenueByDay).map(([name, data]) => ({
+        name,
+        current: data.revenue,
+        suggested: data.count, // Show booking count as the second line
+      }));
+
+      // Always use real data — replace seed data
+      setTrendData(realTrends);
+    } catch (error) {
+      console.error('Error fetching live stats:', error);
+    }
+  };
 
   const handleTriggerCron = async () => {
     setCronRunning(true);
@@ -103,11 +196,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     } finally {
       setCronRunning(false);
     }
-  };
-
-  const handleDismissAlert = (id: string) => {
-    setDismissedAlerts(prev => [...prev, id]);
-    dismissAlert(id).catch(() => {});
   };
 
   const runAIAnalysis = async () => {
@@ -351,12 +439,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   };
 
   const pricingStats = [
-    { label: 'Current Avg Price', value: '$275', change: '+8.2%', icon: <TrendingUp size={24} />, color: 'bg-blue-500' },
-    { label: 'AI Suggested Price', value: '$298', change: '+12.5%', icon: <Zap size={24} />, color: 'bg-amber-500' },
-    { label: 'Occupancy Rate', value: '87%', change: '+5.3%', icon: <Hotel size={24} />, color: 'bg-green-500' },
-    { label: 'Revenue Projection', value: '$45.2K', change: '+15.7%', icon: <TrendingUp size={24} />, color: 'bg-purple-500' },
+    { label: 'Avg Service Price', value: `ETB ${liveStats.avgPrice.toLocaleString()}`, change: `${liveStats.totalBookings} services`, icon: <TrendingUp size={24} />, color: 'bg-blue-500' },
+    { label: 'Total Revenue', value: `ETB ${(liveStats.totalRevenue / 1000).toFixed(1)}K`, change: `${liveStats.todayBookings} today`, icon: <Zap size={24} />, color: 'bg-amber-500' },
+    { label: 'Occupancy Rate', value: `${liveStats.occupancyRate}%`, change: `${liveStats.totalBookings} bookings`, icon: <Hotel size={24} />, color: 'bg-green-500' },
+    { label: 'Members', value: `${liveStats.totalMembers}`, change: `${liveStats.cancellationRate}% cancel rate`, icon: <Users size={24} />, color: 'bg-purple-500' },
   ];
 
+
+  const handleApproval = async (id: string, table: string, status: 'Approved' | 'Rejected') => {
+    const { error } = await supabase.from(table).update({ status }).eq('id', id);
+    if (error) {
+      console.error(`Error updating ${table}:`, error);
+      return;
+    }
+    // Refresh data
+    fetchDashboardData();
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -392,17 +490,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h3 className="text-xl font-bold text-slate-900">Price Trends Overview</h3>
-              <p className="text-sm text-slate-400">Current vs AI-suggested pricing over time</p>
+              <h3 className="text-xl font-bold text-slate-900">Revenue & Bookings (14 days)</h3>
+              <p className="text-sm text-slate-400">Daily revenue and booking count from Supabase</p>
             </div>
             <div className="flex items-center gap-4 text-xs font-bold">
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-[#0066ff] rounded-full" />
-                <span>Current Price</span>
+                <span>Revenue (ETB)</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="w-3 h-3 bg-amber-500 rounded-full" />
-                <span>AI Suggested</span>
+                <span>Bookings</span>
               </div>
             </div>
           </div>
@@ -442,40 +540,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
           <h3 className="text-xl font-bold text-slate-900 mb-6">Quick Insights</h3>
           <div className="space-y-6">
-            <div className="p-4 bg-blue-50 rounded-2xl">
-              <div className="flex items-center gap-3 mb-2 text-blue-600">
+            <div className={`p-4 rounded-2xl ${liveStats.totalRevenue > 0 ? 'bg-green-50' : 'bg-blue-50'}`}>
+              <div className={`flex items-center gap-3 mb-2 ${liveStats.totalRevenue > 0 ? 'text-green-600' : 'text-blue-600'}`}>
                 <Zap size={20} />
-                <span className="font-bold text-sm">Revenue Opportunity</span>
+                <span className="font-bold text-sm">Revenue Status</span>
               </div>
-              <p className="text-sm text-blue-900/70 leading-relaxed">
-                Accepting AI suggestions could increase revenue by <span className="font-bold">$8.5K</span> this week
+              <p className={`text-sm leading-relaxed ${liveStats.totalRevenue > 0 ? 'text-green-900/70' : 'text-blue-900/70'}`}>
+                Total revenue: <span className="font-bold">ETB {liveStats.totalRevenue.toLocaleString()}</span>.
+                {liveStats.todayBookings > 0
+                  ? ` ${liveStats.todayBookings} booking(s) today.`
+                  : ' No bookings yet today — consider a promotion.'}
               </p>
             </div>
-            <div className="p-4 bg-amber-50 rounded-2xl">
-              <div className="flex items-center gap-3 mb-2 text-amber-600">
+            <div className={`p-4 rounded-2xl ${liveStats.occupancyRate > 70 ? 'bg-amber-50' : liveStats.occupancyRate > 30 ? 'bg-blue-50' : 'bg-red-50'}`}>
+              <div className={`flex items-center gap-3 mb-2 ${liveStats.occupancyRate > 70 ? 'text-amber-600' : liveStats.occupancyRate > 30 ? 'text-blue-600' : 'text-red-600'}`}>
                 <AlertCircle size={20} />
-                <span className="font-bold text-sm">High Demand Period</span>
+                <span className="font-bold text-sm">
+                  {liveStats.occupancyRate > 70 ? 'High Demand' : liveStats.occupancyRate > 30 ? 'Moderate Demand' : 'Low Occupancy'}
+                </span>
               </div>
-              <p className="text-sm text-amber-900/70 leading-relaxed">
-                Weekend (Apr 5-7) shows <span className="font-bold">156%</span> higher demand than average
+              <p className={`text-sm leading-relaxed ${liveStats.occupancyRate > 70 ? 'text-amber-900/70' : liveStats.occupancyRate > 30 ? 'text-blue-900/70' : 'text-red-900/70'}`}>
+                {liveStats.occupancyRate}% occupancy with <span className="font-bold">{liveStats.totalBookings}</span> active bookings.
+                {liveStats.occupancyRate > 70 ? ' Consider premium pricing.' : liveStats.occupancyRate < 30 ? ' Consider promotional rates.' : ''}
               </p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-slate-50 rounded-2xl text-center">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Avg. Window</p>
-                <p className="text-lg font-bold text-slate-900">14 days</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Total Bookings</p>
+                <p className="text-lg font-bold text-slate-900">{liveStats.totalBookings}</p>
               </div>
               <div className="p-4 bg-slate-50 rounded-2xl text-center">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Comp. Price</p>
-                <p className="text-lg font-bold text-slate-900">$285</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Cancel Rate</p>
+                <p className="text-lg font-bold text-slate-900">{liveStats.cancellationRate}%</p>
               </div>
             </div>
             <div className="flex items-center justify-between p-4 bg-slate-900 text-white rounded-2xl">
               <div className="flex items-center gap-3">
                 <Globe size={20} className="text-[#0066ff]" />
-                <span className="font-bold text-sm">Market Demand</span>
+                <span className="font-bold text-sm">Occupancy</span>
               </div>
-              <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg">High</span>
+              <span className={`text-white text-[10px] font-bold px-2 py-1 rounded-lg ${liveStats.occupancyRate > 70 ? 'bg-red-500' : liveStats.occupancyRate > 30 ? 'bg-amber-500' : 'bg-green-500'}`}>
+                {liveStats.occupancyRate > 70 ? 'High' : liveStats.occupancyRate > 30 ? 'Medium' : 'Low'}
+              </span>
             </div>
           </div>
         </div>
@@ -590,10 +696,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                   </td>
                   <td className="px-8 py-6 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button className="p-2 text-green-500 hover:bg-green-50 rounded-xl transition-colors">
+                      <button onClick={() => handleApproval(approval.id, 'pricing_approvals', 'Approved')} className="p-2 text-green-500 hover:bg-green-50 rounded-xl transition-colors">
                         <CheckCircle2 size={20} />
                       </button>
-                      <button className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors">
+                      <button onClick={() => handleApproval(approval.id, 'pricing_approvals', 'Rejected')} className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors">
                         <XCircle size={20} />
                       </button>
                     </div>
@@ -848,10 +954,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                   </td>
                   <td className="px-8 py-6 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-green-500/20 active:scale-95">
+                      <button onClick={() => handleApproval(approval.id, 'resort_approvals', 'Approved')} className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-green-500/20 active:scale-95">
                         Approve
                       </button>
-                      <button className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all active:scale-95">
+                      <button onClick={() => handleApproval(approval.id, 'resort_approvals', 'Rejected')} className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all active:scale-95">
                         Reject
                       </button>
                     </div>
@@ -1149,6 +1255,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         <nav className="mt-8 px-4 space-y-2">
           {[
             { id: 'ai-insights', label: 'AI Insights', icon: <SparklesIcon size={20} /> },
+            { id: 'services', label: 'Services', icon: <Package size={20} /> },
             { id: 'pricing-dashboard', label: 'Pricing Dashboard', icon: <LayoutDashboard size={20} /> },
             { id: 'pricing-approvals', label: 'Pricing Approvals', icon: <CheckCircle2 size={20} /> },
             { id: 'pricing-calendar', label: 'Pricing Calendar', icon: <Calendar size={20} /> },
@@ -1208,11 +1315,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               </button>
               <button className="relative p-2 text-slate-400 hover:text-[#0066ff] transition-colors">
                 <Bell size={24} />
-                {aiAnalysis && aiAnalysis.alerts.filter(a => !dismissedAlerts.includes(a.id)).length > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
-                    {aiAnalysis.alerts.filter(a => !dismissedAlerts.includes(a.id)).length}
-                  </span>
-                )}
               </button>
               <div className="flex items-center gap-3 pl-6 border-l border-slate-100">
                 <div className="text-right hidden sm:block">
@@ -1240,6 +1342,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               {activeTab === 'ai-insights' && (
                 <AIInsightsPanel analysis={aiAnalysis} loading={aiLoading} onRefresh={runAIAnalysis} />
               )}
+              {activeTab === 'services' && <AdminServices />}
               {activeTab === 'pricing-dashboard' && renderPricingDashboard()}
               {activeTab === 'pricing-approvals' && renderPricingApprovals()}
               {activeTab === 'pricing-calendar' && renderPricingCalendar()}
@@ -1258,14 +1361,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
           </AnimatePresence>
         </div>
       </main>
-
-      {/* AI Notifications */}
-      {aiAnalysis && (
-        <AdminNotifications
-          alerts={aiAnalysis.alerts.filter(a => !dismissedAlerts.includes(a.id))}
-          onDismiss={handleDismissAlert}
-        />
-      )}
 
       {/* AI Chat FAB */}
       <button

@@ -48,8 +48,20 @@ export default function App() {
   const handleUser = async (currentUser: any) => {
     try {
       setUser(currentUser);
-      const adminStatus = currentUser.email === "bruhtech145@gmail.com";
+
+      // Check admin status from profiles table (not hardcoded)
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', currentUser.id)
+        .single();
+      const adminStatus = profile?.is_admin === true;
       setIsAdmin(adminStatus);
+
+      // If admin, auto-navigate to admin dashboard
+      if (adminStatus) {
+        setView('admin-dashboard');
+      }
 
       // Check if member profile exists
       const { data: existingMember, error } = await supabase
@@ -59,14 +71,14 @@ export default function App() {
         .single();
 
       if (error && error.code === 'PGRST116') {
-        // No member found — create one
+        // No member found — create one (for both admin and regular users)
         const newMember: Member = {
           id: currentUser.id,
           email: currentUser.email || '',
           full_name: currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'Guest',
-          loyalty_tier: 'Explorer',
+          loyalty_tier: adminStatus ? 'Pinnacle' : 'Explorer',
           points_balance: 0,
-          onboarding_completed: false,
+          onboarding_completed: adminStatus, // Admins skip onboarding
         };
         const { data: inserted, error: insertError } = await supabase
           .from('members')
@@ -76,13 +88,16 @@ export default function App() {
 
         if (insertError) {
           console.error('Failed to create member profile:', insertError);
-          // Still set the member from local data so UI isn't stuck
           setMember(newMember);
         } else {
           setMember(inserted as Member);
         }
       } else if (error) {
         console.error('Error fetching member:', error);
+        // Still allow admin to proceed even if member profile fails
+        if (adminStatus) {
+          setMember({ id: currentUser.id, email: currentUser.email || '', full_name: currentUser.user_metadata?.full_name || 'Admin', loyalty_tier: 'Pinnacle', points_balance: 0, onboarding_completed: true });
+        }
       } else {
         setMember(existingMember as Member);
       }
@@ -129,7 +144,10 @@ export default function App() {
   }
 
   if (view === 'admin-dashboard') {
-    return <AdminDashboard onLogout={() => setView('home')} />;
+    return <AdminDashboard onLogout={async () => {
+      await supabase.auth.signOut();
+      setView('home');
+    }} />;
   }
 
   if (!user) {

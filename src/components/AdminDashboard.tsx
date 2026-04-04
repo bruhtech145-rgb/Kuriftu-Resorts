@@ -1,498 +1,503 @@
-import React, { useState, useEffect } from 'react';
-import { db, handleFirestoreError, auth } from '../lib/firebase';
-import { collection, onSnapshot, query, orderBy, limit, addDoc, deleteDoc } from 'firebase/firestore';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell 
-} from 'recharts';
-import { 
-  TrendingUp, Users, Calendar, DollarSign, ArrowUpRight, ArrowDownRight, 
-  Sparkles, AlertCircle, Download, RefreshCcw, Database, Plus, Trash2, Tag
-} from 'lucide-react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { format, subDays } from 'date-fns';
-import { doc, writeBatch } from 'firebase/firestore';
-import { PricingRule } from '../types';
-import { getRevenueForecast, suggestPricingRules } from '../lib/gemini';
+import { 
+  Users, 
+  Calendar, 
+  MapPin, 
+  TrendingUp, 
+  Bell, 
+  Search, 
+  LogOut, 
+  Settings, 
+  ChevronRight, 
+  LayoutDashboard, 
+  Hotel, 
+  Utensils, 
+  Waves,
+  Menu,
+  X,
+  UserCircle,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  ArrowUpRight,
+  ArrowDownRight,
+  Zap,
+  Clock,
+  Globe
+} from 'lucide-react';
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer, 
+  AreaChart, 
+  Area 
+} from 'recharts';
+import { supabase } from '../lib/supabase';
 
-const COLORS = ['#1c1917', '#44403c', '#78716c', '#a8a29e', '#d6d3d1'];
+interface AdminDashboardProps {
+  onLogout: () => void;
+}
 
-export default function AdminDashboard() {
-  const [revenueData, setRevenueData] = useState<any[]>([]);
-  const [kpis, setKpis] = useState({
-    revenue: 1245000,
-    occupancy: 78,
-    bookings: 142,
-    avgStay: 4.2
+const trendData = [
+  { name: 'Mar 28', current: 240, suggested: 260 },
+  { name: 'Mar 29', current: 240, suggested: 275 },
+  { name: 'Mar 30', current: 250, suggested: 280 },
+  { name: 'Mar 31', current: 250, suggested: 290 },
+  { name: 'Apr 1', current: 260, suggested: 300 },
+  { name: 'Apr 2', current: 265, suggested: 310 },
+  { name: 'Apr 3', current: 270, suggested: 315 },
+  { name: 'Apr 4', current: 275, suggested: 320 },
+];
+
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState('pricing-dashboard');
+
+  const pricingStats = [
+    { label: 'Current Avg Price', value: '$275', change: '+8.2%', icon: <TrendingUp size={24} />, color: 'bg-blue-500' },
+    { label: 'AI Suggested Price', value: '$298', change: '+12.5%', icon: <Zap size={24} />, color: 'bg-amber-500' },
+    { label: 'Occupancy Rate', value: '87%', change: '+5.3%', icon: <Hotel size={24} />, color: 'bg-green-500' },
+    { label: 'Revenue Projection', value: '$45.2K', change: '+15.7%', icon: <TrendingUp size={24} />, color: 'bg-purple-500' },
+  ];
+
+  const pricingApprovals = [
+    { id: 1, roomType: 'Deluxe King Suite', date: 'Apr 5, 2026', current: 280, suggested: 320, change: '+14.3%', status: 'Pending' },
+    { id: 2, roomType: 'Standard Double Room', date: 'Apr 5, 2026', current: 180, suggested: 210, change: '+16.7%', status: 'Pending' },
+    { id: 3, roomType: 'Ocean View Suite', date: 'Apr 6, 2026', current: 450, suggested: 420, change: '-6.7%', status: 'Pending' },
+  ];
+
+  const recommendations = [
+    { type: 'Deluxe King Suite', reason: 'High weekend demand detected', current: 280, suggested: 320, change: '+14.3%', confidence: '95%' },
+    { type: 'Standard Double Room', reason: 'Conference event nearby', current: 180, suggested: 210, change: '+16.7%', confidence: '88%' },
+    { type: 'Ocean View Suite', reason: 'Competitor pricing lower', current: 450, suggested: 420, change: '-6.7%', confidence: '82%' },
+    { type: 'Junior Suite', reason: 'Low inventory remaining', current: 220, suggested: 245, change: '+11.4%', confidence: '90%' },
+  ];
+
+  const calendarDays = Array.from({ length: 18 }, (_, i) => {
+    const day = i + 1;
+    let price = 250;
+    let discount = null;
+    let demand = 'Medium Demand';
+    
+    if ([1, 2, 3, 6, 7, 8, 9].includes(day)) {
+      price = 200;
+      discount = '15% OFF';
+      demand = 'Low Demand';
+    } else if ([4, 5, 11, 12, 18].includes(day)) {
+      price = 320;
+      demand = 'High Demand';
+    }
+    
+    return { day, price, discount, demand };
   });
-  const [aiForecast, setAiForecast] = useState<any>(null);
-  const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [seeding, setSeeding] = useState(false);
-  const [showAddRule, setShowAddRule] = useState(false);
-  const [newRule, setNewRule] = useState<Partial<PricingRule>>({
-    type: 'occupancy',
-    adjustment_type: 'percentage',
-    is_active: true
-  });
-  const [applyingAi, setApplyingAi] = useState(false);
 
-  useEffect(() => {
-    // Simulated data for charts
-    const data = Array.from({ length: 7 }).map((_, i) => ({
-      date: format(subDays(new Date(), 6 - i), 'MMM dd'),
-      revenue: Math.floor(Math.random() * 50000) + 100000,
-      bookings: Math.floor(Math.random() * 20) + 10,
-      occupancy: Math.floor(Math.random() * 30) + 60
-    }));
-    setRevenueData(data);
-
-    // Fetch pricing rules
-    const rulesUnsubscribe = onSnapshot(collection(db, 'pricing_rules'), (snapshot) => {
-      const rules = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PricingRule));
-      setPricingRules(rules);
-      
-      // Fetch forecast whenever rules change or initially
-      setLoading(true);
-      getRevenueForecast(data, rules)
-        .then(setAiForecast)
-        .catch(err => {
-          console.error("Critical forecast failure:", err);
-          // Only set a minimal fallback if gemini.ts failed completely (not just quota)
-          if (!aiForecast) {
-            setAiForecast({
-              forecast_summary: "Unable to generate AI forecast at this time.",
-              predicted_revenue: 0,
-              risk_factors: ["Service unavailable"],
-              recommendations: [],
-              pricing_optimization_tips: []
-            });
-          }
-        })
-        .finally(() => setLoading(false));
-    }, (err) => handleFirestoreError(err, 'list', 'pricing_rules'));
-
-    return () => rulesUnsubscribe();
-  }, []);
-
-  const addRule = async () => {
-    try {
-      await addDoc(collection(db, 'pricing_rules'), {
-        ...newRule,
-        created_at: new Date().toISOString()
-      });
-      setShowAddRule(false);
-      setNewRule({ type: 'occupancy', adjustment_type: 'percentage', is_active: true });
-    } catch (err) {
-      handleFirestoreError(err, 'write', 'pricing_rules');
-    }
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    onLogout();
   };
 
-  const applyAiRules = async () => {
-    if (!aiForecast) return;
-    setApplyingAi(true);
-    try {
-      const suggestions = await suggestPricingRules(aiForecast, pricingRules);
-      if (!Array.isArray(suggestions) || suggestions.length === 0) {
-        alert("AI suggestions are currently unavailable due to high demand. Please try again later.");
-        return;
-      }
-      const batch = writeBatch(db);
-      
-      suggestions.forEach((rule: any) => {
-        if (!rule) return;
-        const ref = doc(collection(db, 'pricing_rules'));
-        batch.set(ref, {
-          ...rule,
-          created_at: new Date().toISOString()
-        });
-      });
-
-      await batch.commit();
-      alert("AI-suggested pricing rules applied successfully!");
-    } catch (err) {
-      console.error("Failed to apply AI rules", err);
-      alert("Failed to apply AI rules. Please try again.");
-    } finally {
-      setApplyingAi(false);
-    }
-  };
-
-  const deleteRule = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'pricing_rules', id));
-    } catch (err) {
-      handleFirestoreError(err, 'delete', `pricing_rules/${id}`);
-    }
-  };
-
-  const seedData = async () => {
-    setSeeding(true);
-    try {
-      const batch = writeBatch(db);
-      const services = [
-        { id: 'room-1', name: 'Luxury Rock Suite', category_id: 'Rooms', base_price: 12500, description: 'Hand-carved suite with panoramic views of the Lalibela mountains.', status: 'Active', duration_minutes: 1440, max_capacity: 2, tags: ['luxury', 'view'], images: ['https://picsum.photos/seed/room1/800/600'] },
-        { id: 'tour-1', name: 'Lalibela Heritage Tour', category_id: 'Activities', base_price: 3500, description: 'A deep dive into the 11 rock-hewn churches with an expert guide.', status: 'Active', duration_minutes: 240, max_capacity: 10, tags: ['culture', 'history'], images: ['https://picsum.photos/seed/tour1/800/600'] },
-        { id: 'spa-1', name: 'Traditional Coffee Spa', category_id: 'Wellness', base_price: 2800, description: 'A unique wellness experience using organic Ethiopian coffee beans.', status: 'Active', duration_minutes: 90, max_capacity: 1, tags: ['wellness', 'coffee'], images: ['https://picsum.photos/seed/spa1/800/600'] },
-        { id: 'dining-1', name: 'Royal Ethiopian Feast', category_id: 'Dining', base_price: 4500, description: 'A multi-course traditional dinner with live cultural music.', status: 'Active', duration_minutes: 120, max_capacity: 50, tags: ['food', 'music'], images: ['https://picsum.photos/seed/dining1/800/600'] },
-      ];
-
-      services.forEach(s => {
-        const ref = doc(db, 'services', s.id);
-        batch.set(ref, s);
-      });
-
-      try {
-        await batch.commit();
-        alert("Seed data added successfully!");
-      } catch (err) {
-        handleFirestoreError(err, 'write', 'services (batch)');
-      }
-    } catch (err) {
-      console.error("Seeding failed", err);
-    } finally {
-      setSeeding(false);
-    }
-  };
-
-  const StatCard = ({ title, value, icon: Icon, trend, trendValue }: any) => (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-white p-6 rounded-[2rem] border border-stone-100 shadow-sm"
-    >
-      <div className="flex items-center justify-between mb-4">
-        <div className="w-12 h-12 bg-stone-50 rounded-2xl flex items-center justify-center text-stone-900">
-          <Icon size={24} />
-        </div>
-        <div className={clsx(
-          "flex items-center gap-1 text-sm font-bold px-2 py-1 rounded-full",
-          trend === 'up' ? "bg-green-50 text-green-600" : "bg-red-50 text-red-600"
-        )}>
-          {trend === 'up' ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}
-          {trendValue}%
-        </div>
-      </div>
-      <p className="text-stone-500 text-sm font-medium mb-1">{title}</p>
-      <h3 className="text-2xl font-serif text-stone-900">{value}</h3>
-    </motion.div>
-  );
-
-  return (
-    <div className="space-y-10">
-      {/* Debug Info */}
-      <div className="bg-stone-100 p-4 rounded-xl text-xs font-mono text-stone-500">
-        Admin: bruhtech145@gmail.com | Current: {auth.currentUser?.email}
-      </div>
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-4xl font-serif text-stone-900 mb-2">Operations Dashboard</h1>
-          <p className="text-stone-500">Real-time performance metrics and AI-driven insights.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={seedData}
-            disabled={seeding}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 rounded-xl text-stone-600 hover:bg-stone-50 transition-all font-medium"
+  const renderPricingDashboard = () => (
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {pricingStats.map((stat, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.1 }}
+            className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100"
           >
-            <Database size={18} />
-            {seeding ? "Seeding..." : "Seed Initial Data"}
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-stone-200 rounded-xl text-stone-600 hover:bg-stone-50 transition-all font-medium">
-            <Download size={18} />
-            Export Report
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-stone-900 text-white rounded-xl hover:bg-stone-800 transition-all font-medium">
-            <RefreshCcw size={18} />
-            Refresh Data
-          </button>
-        </div>
-      </div>
-
-      {/* KPI Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Total Revenue" value={`ETB ${kpis.revenue.toLocaleString()}`} icon={DollarSign} trend="up" trendValue="12.5" />
-        <StatCard title="Avg. Occupancy" value={`${kpis.occupancy}%`} icon={Calendar} trend="up" trendValue="4.2" />
-        <StatCard title="New Bookings" value={kpis.bookings} icon={Users} trend="down" trendValue="2.1" />
-        <StatCard title="Avg. Stay Length" value={`${kpis.avgStay} Days`} icon={TrendingUp} trend="up" trendValue="0.8" />
+            <div className="flex items-center justify-between mb-4">
+              <div className={`w-12 h-12 ${stat.color} text-white rounded-2xl flex items-center justify-center shadow-lg`}>
+                {stat.icon}
+              </div>
+              <span className="text-xs font-bold text-green-500 bg-green-50 px-2 py-1 rounded-lg">
+                {stat.change}
+              </span>
+            </div>
+            <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">{stat.label}</p>
+            <h3 className="text-3xl font-bold text-slate-900">{stat.value}</h3>
+          </motion.div>
+        ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Revenue Chart */}
-        <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] border border-stone-100 shadow-sm">
+        <div className="lg:col-span-2 bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
           <div className="flex items-center justify-between mb-8">
-            <h3 className="text-xl font-serif text-stone-900">Revenue Performance</h3>
-            <div className="flex gap-2">
-              <button className="px-3 py-1 text-xs font-bold bg-stone-100 text-stone-900 rounded-lg">7D</button>
-              <button className="px-3 py-1 text-xs font-bold text-stone-400 hover:text-stone-900">30D</button>
-              <button className="px-3 py-1 text-xs font-bold text-stone-400 hover:text-stone-900">YTD</button>
+            <div>
+              <h3 className="text-xl font-bold text-slate-900">Price Trends Overview</h3>
+              <p className="text-sm text-slate-400">Current vs AI-suggested pricing over time</p>
+            </div>
+            <div className="flex items-center gap-4 text-xs font-bold">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-[#0066ff] rounded-full" />
+                <span>Current Price</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-amber-500 rounded-full" />
+                <span>AI Suggested</span>
+              </div>
             </div>
           </div>
-          <div className="h-[350px] w-full">
+          <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueData}>
+              <AreaChart data={trendData}>
                 <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#1c1917" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#1c1917" stopOpacity={0}/>
+                  <linearGradient id="colorCurrent" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0066ff" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#0066ff" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorSuggested" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{fill: '#a8a29e', fontSize: 12}} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#a8a29e', fontSize: 12}} tickFormatter={(v) => `ETB ${v/1000}k`} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
                 <Tooltip 
-                  contentStyle={{backgroundColor: '#fff', borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
-                  itemStyle={{color: '#1c1917', fontWeight: 'bold'}}
+                  contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
                 />
-                <Area type="monotone" dataKey="revenue" stroke="#1c1917" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                <Area type="monotone" dataKey="current" stroke="#0066ff" strokeWidth={3} fillOpacity={1} fill="url(#colorCurrent)" />
+                <Area type="monotone" dataKey="suggested" stroke="#f59e0b" strokeWidth={3} fillOpacity={1} fill="url(#colorSuggested)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* AI Insights Panel */}
-        <div className="bg-stone-900 p-8 rounded-[2.5rem] text-white overflow-hidden relative">
-          <div className="relative z-10">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2 text-stone-400">
-                <Sparkles size={20} />
-                <span className="uppercase tracking-widest text-xs font-bold">AI Revenue Forecast</span>
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+          <h3 className="text-xl font-bold text-slate-900 mb-6">Quick Insights</h3>
+          <div className="space-y-6">
+            <div className="p-4 bg-blue-50 rounded-2xl">
+              <div className="flex items-center gap-3 mb-2 text-blue-600">
+                <Zap size={20} />
+                <span className="font-bold text-sm">Revenue Opportunity</span>
               </div>
-              {aiForecast?.forecast_summary?.includes("unavailable") && (
-                <div className="flex items-center gap-1.5 bg-amber-500/10 text-amber-500 px-3 py-1 rounded-full border border-amber-500/20">
-                  <AlertCircle size={12} />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">High Demand</span>
-                </div>
-              )}
+              <p className="text-sm text-blue-900/70 leading-relaxed">
+                Accepting AI suggestions could increase revenue by <span className="font-bold">$8.5K</span> this week
+              </p>
             </div>
-            
-            {loading ? (
-              <div className="space-y-4 animate-pulse">
-                <div className="h-8 bg-white/10 rounded-lg w-3/4" />
-                <div className="h-24 bg-white/10 rounded-lg w-full" />
-                <div className="space-y-2">
-                  <div className="h-4 bg-white/10 rounded-lg w-full" />
-                  <div className="h-4 bg-white/10 rounded-lg w-5/6" />
-                </div>
+            <div className="p-4 bg-amber-50 rounded-2xl">
+              <div className="flex items-center gap-3 mb-2 text-amber-600">
+                <AlertCircle size={20} />
+                <span className="font-bold text-sm">High Demand Period</span>
               </div>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="space-y-8"
-              >
-                <div>
-                  <h4 className="text-3xl font-serif mb-2">ETB {(aiForecast.predicted_revenue / 1000000).toFixed(1)}M</h4>
-                  <p className="text-stone-400 text-sm">Predicted revenue for next 30 days</p>
-                </div>
-
-                <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
-                  <p className="text-stone-300 text-sm leading-relaxed italic">
-                    "{aiForecast.forecast_summary}"
-                  </p>
-                </div>
-
-                <div className="space-y-4">
-                  <h5 className="text-xs font-bold uppercase tracking-widest text-stone-400">Strategic Recommendations</h5>
-                  {aiForecast.recommendations.map((rec: string, i: number) => (
-                    <div key={i} className="flex gap-3 items-start group">
-                      <div className="w-5 h-5 bg-white/10 rounded-full flex items-center justify-center shrink-0 mt-0.5 group-hover:bg-white/20 transition-colors">
-                        <span className="text-[10px] font-bold">{i + 1}</span>
-                      </div>
-                      <p className="text-sm text-stone-300 group-hover:text-white transition-colors">{rec}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {aiForecast.pricing_optimization_tips && (
-                  <div className="space-y-4 pt-4 border-t border-white/10">
-                    <h5 className="text-xs font-bold uppercase tracking-widest text-stone-400">Pricing Optimization</h5>
-                    {aiForecast.pricing_optimization_tips.map((tip: string, i: number) => (
-                      <div key={i} className="flex gap-3 items-start group">
-                        <Tag size={14} className="text-stone-500 mt-1" />
-                        <p className="text-sm text-stone-400">{tip}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <button 
-                  onClick={applyAiRules}
-                  disabled={applyingAi || !aiForecast}
-                  className="w-full bg-white text-stone-900 py-4 rounded-2xl font-bold hover:bg-stone-100 transition-all flex items-center justify-center gap-2"
-                >
-                  {applyingAi ? (
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
-                      className="w-5 h-5 border-2 border-stone-900/20 border-t-stone-900 rounded-full"
-                    />
-                  ) : (
-                    <>
-                      <Sparkles size={18} />
-                      Apply AI Pricing Rules
-                    </>
-                  )}
-                </button>
-              </motion.div>
-            )}
+              <p className="text-sm text-amber-900/70 leading-relaxed">
+                Weekend (Apr 5-7) shows <span className="font-bold">156%</span> higher demand than average
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-50 rounded-2xl text-center">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Avg. Window</p>
+                <p className="text-lg font-bold text-slate-900">14 days</p>
+              </div>
+              <div className="p-4 bg-slate-50 rounded-2xl text-center">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Comp. Price</p>
+                <p className="text-lg font-bold text-slate-900">$285</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-4 bg-slate-900 text-white rounded-2xl">
+              <div className="flex items-center gap-3">
+                <Globe size={20} className="text-[#0066ff]" />
+                <span className="font-bold text-sm">Market Demand</span>
+              </div>
+              <span className="bg-green-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg">High</span>
+            </div>
           </div>
-          {/* Decorative background */}
-          <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-white/5 rounded-full blur-3xl pointer-events-none" />
         </div>
       </div>
 
-      {/* Dynamic Pricing Rules Section */}
-      <div className="bg-white p-8 rounded-[2.5rem] border border-stone-100 shadow-sm">
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h3 className="text-2xl font-serif text-stone-900 mb-1">Dynamic Pricing Rules</h3>
-            <p className="text-stone-500 text-sm">Automate price adjustments based on real-time factors.</p>
+            <h3 className="text-xl font-bold text-slate-900">AI Pricing Recommendations</h3>
+            <p className="text-sm text-slate-400">Machine learning powered suggestions based on demand forecasting</p>
           </div>
-          <button 
-            onClick={() => setShowAddRule(true)}
-            className="flex items-center gap-2 bg-stone-900 text-white px-6 py-3 rounded-2xl hover:bg-stone-800 transition-all font-bold"
-          >
-            <Plus size={18} />
-            Add New Rule
-          </button>
+          <button className="text-[#0066ff] font-bold text-sm hover:underline">View All Suggestions</button>
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <AnimatePresence>
-            {pricingRules.map((rule) => (
-              <motion.div
-                key={rule.id}
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="p-6 rounded-3xl border border-stone-100 bg-stone-50/50 relative group"
-              >
-                <button 
-                  onClick={() => deleteRule(rule.id)}
-                  className="absolute top-4 right-4 text-stone-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
-                >
-                  <Trash2 size={18} />
-                </button>
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                    {rule.type === 'occupancy' ? <Users size={20} className="text-stone-600" /> : 
-                     rule.type === 'seasonal' ? <Calendar size={20} className="text-stone-600" /> : 
-                     <Sparkles size={20} className="text-stone-600" />}
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-stone-900">{rule.name}</h4>
-                    <span className="text-[10px] uppercase tracking-widest font-bold text-stone-400">{rule.type}</span>
-                  </div>
-                </div>
-                <p className="text-sm text-stone-500 mb-6 line-clamp-2">{rule.description}</p>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={clsx(
-                      "px-3 py-1 rounded-full text-xs font-bold",
-                      rule.adjustment_value > 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-                    )}>
-                      {rule.adjustment_value > 0 ? '+' : ''}{rule.adjustment_value}{rule.adjustment_type === 'percentage' ? '%' : ' ETB'}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className={clsx(
-                      "w-2 h-2 rounded-full",
-                      rule.is_active ? "bg-green-500" : "bg-stone-300"
-                    )} />
-                    <span className="text-xs font-medium text-stone-500">{rule.is_active ? 'Active' : 'Inactive'}</span>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-
-        {showAddRule && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-stone-900/40 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-white w-full max-w-lg rounded-[2.5rem] p-10 shadow-2xl"
-            >
-              <h3 className="text-2xl font-serif text-stone-900 mb-8">New Pricing Rule</h3>
-              <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {recommendations.map((rec, i) => (
+            <div key={i} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 hover:border-[#0066ff]/30 transition-all group">
+              <h4 className="font-bold text-slate-900 mb-1">{rec.type}</h4>
+              <p className="text-xs text-slate-400 mb-4">{rec.reason}</p>
+              <div className="flex items-center justify-between mb-4">
                 <div>
-                  <label className="block text-sm font-bold text-stone-500 mb-2">Rule Name</label>
-                  <input 
-                    type="text" 
-                    className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-stone-900 focus:outline-none"
-                    placeholder="e.g. High Occupancy Surge"
-                    onChange={(e) => setNewRule({...newRule, name: e.target.value})}
-                  />
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Current</p>
+                  <p className="text-lg font-bold text-slate-900">${rec.current}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-stone-500 mb-2">Type</label>
-                    <select 
-                      className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-stone-900 focus:outline-none"
-                      onChange={(e) => setNewRule({...newRule, type: e.target.value as any})}
-                    >
-                      <option value="occupancy">Occupancy</option>
-                      <option value="seasonal">Seasonal</option>
-                      <option value="event">Event</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-stone-500 mb-2">Condition Value</label>
-                    <input 
-                      type="text" 
-                      className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-stone-900 focus:outline-none"
-                      placeholder="e.g. 80"
-                      onChange={(e) => setNewRule({...newRule, condition_value: e.target.value})}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-stone-500 mb-2">Adjustment Type</label>
-                    <select 
-                      className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-stone-900 focus:outline-none"
-                      onChange={(e) => setNewRule({...newRule, adjustment_type: e.target.value as any})}
-                    >
-                      <option value="percentage">Percentage (%)</option>
-                      <option value="fixed">Fixed (ETB)</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-stone-500 mb-2">Value</label>
-                    <input 
-                      type="number" 
-                      className="w-full px-4 py-3 rounded-xl border border-stone-200 focus:ring-2 focus:ring-stone-900 focus:outline-none"
-                      placeholder="e.g. 15"
-                      onChange={(e) => setNewRule({...newRule, adjustment_value: Number(e.target.value)})}
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-4 pt-4">
-                  <button 
-                    onClick={() => setShowAddRule(false)}
-                    className="flex-1 px-6 py-4 rounded-2xl border border-stone-200 text-stone-600 font-bold hover:bg-stone-50 transition-all"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    onClick={addRule}
-                    className="flex-1 px-6 py-4 rounded-2xl bg-stone-900 text-white font-bold hover:bg-stone-800 transition-all"
-                  >
-                    Create Rule
-                  </button>
+                <div className="text-right">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Suggested</p>
+                  <p className="text-lg font-bold text-[#0066ff]">${rec.suggested}</p>
                 </div>
               </div>
-            </motion.div>
-          </div>
-        )}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+                <div className="flex items-center gap-1 text-green-500 font-bold text-xs">
+                  <ArrowUpRight size={14} /> {rec.change}
+                </div>
+                <div className="text-[10px] font-bold text-slate-400">
+                  Confidence: <span className="text-slate-900">{rec.confidence}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
-}
 
-function clsx(...inputs: any[]) {
-  return inputs.filter(Boolean).join(' ');
-}
+  const renderPricingApprovals = () => (
+    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+      <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+        <div>
+          <h3 className="text-xl font-bold text-slate-900">Pricing Approvals</h3>
+          <p className="text-sm text-slate-400">5 pending approvals</p>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse">
+          <thead>
+            <tr className="bg-slate-50/50">
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Room Type</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Date</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Current Price</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Suggested Price</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Adjusted Price</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Change</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Status</th>
+              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {pricingApprovals.map((approval) => (
+              <tr key={approval.id} className="hover:bg-slate-50/50 transition-colors group">
+                <td className="px-8 py-6 font-bold text-slate-900">{approval.roomType}</td>
+                <td className="px-8 py-6 text-slate-500 font-medium">{approval.date}</td>
+                <td className="px-8 py-6 font-bold text-slate-400">${approval.current}</td>
+                <td className="px-8 py-6 font-bold text-slate-900">${approval.suggested}</td>
+                <td className="px-8 py-6">
+                  <input 
+                    type="text" 
+                    defaultValue={approval.suggested} 
+                    className="w-20 px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-900 focus:outline-none focus:border-[#0066ff]"
+                  />
+                </td>
+                <td className="px-8 py-6">
+                  <span className={`font-bold ${approval.change.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>
+                    {approval.change}
+                  </span>
+                </td>
+                <td className="px-8 py-6">
+                  <span className="px-3 py-1 bg-amber-100 text-amber-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                    {approval.status}
+                  </span>
+                </td>
+                <td className="px-8 py-6 text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    <button className="p-2 text-green-500 hover:bg-green-50 rounded-xl transition-colors">
+                      <CheckCircle2 size={20} />
+                    </button>
+                    <button className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors">
+                      <XCircle size={20} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const renderPricingCalendar = () => (
+    <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
+        <div>
+          <h3 className="text-xl font-bold text-slate-900">Pricing Calendar</h3>
+          <p className="text-sm text-slate-400">Visual overview of dynamic pricing by date</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
+            <div className="w-3 h-3 bg-red-500 rounded-full" />
+            <span>High Demand</span>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
+            <div className="w-3 h-3 bg-amber-500 rounded-full" />
+            <span>Medium Demand</span>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
+            <div className="w-3 h-3 bg-green-500 rounded-full" />
+            <span>Low Demand</span>
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
+            <div className="w-3 h-3 bg-blue-500 rounded-full" />
+            <span>Discount Applied</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-8 flex items-center justify-between">
+        <h4 className="text-2xl font-bold text-slate-900">April 2026</h4>
+        <div className="flex gap-2">
+          <button className="p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition-colors">
+            <ChevronRight size={20} className="rotate-180" />
+          </button>
+          <button className="p-2 hover:bg-slate-50 rounded-xl border border-slate-100 transition-colors">
+            <ChevronRight size={20} />
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-px bg-slate-100 border border-slate-100 rounded-3xl overflow-hidden">
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+          <div key={day} className="bg-slate-50 p-4 text-center text-xs font-bold text-slate-400 uppercase tracking-widest">
+            {day}
+          </div>
+        ))}
+        {calendarDays.map((day, i) => (
+          <div key={i} className="bg-white p-6 min-h-[120px] hover:bg-slate-50 transition-colors group cursor-pointer relative">
+            <span className="text-sm font-bold text-slate-400 group-hover:text-slate-900 transition-colors">{day.day}</span>
+            <div className="mt-4">
+              <p className="text-xl font-bold text-slate-900">${day.price}</p>
+              {day.discount && (
+                <p className="text-[10px] font-bold text-blue-500 mt-1">{day.discount}</p>
+              )}
+            </div>
+            <div className={`absolute bottom-4 right-4 w-2 h-2 rounded-full ${
+              day.demand === 'High Demand' ? 'bg-red-500' : 
+              day.demand === 'Medium Demand' ? 'bg-amber-500' : 'bg-green-500'
+            }`} />
+          </div>
+        ))}
+        {/* Fill remaining empty cells */}
+        {Array.from({ length: 10 }).map((_, i) => (
+          <div key={`empty-${i}`} className="bg-slate-50/30 p-6 min-h-[120px]" />
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex">
+      {/* Sidebar */}
+      <motion.aside 
+        initial={false}
+        animate={{ width: isSidebarOpen ? 280 : 80 }}
+        className="bg-slate-900 text-white fixed h-full z-50 overflow-hidden"
+      >
+        <div className="p-6 flex items-center justify-between">
+          {isSidebarOpen && (
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-[#0066ff] rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-lg">K</span>
+              </div>
+              <span className="text-xl font-bold tracking-tight">Admin</span>
+            </div>
+          )}
+          <button 
+            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            className="p-2 hover:bg-slate-800 rounded-xl transition-colors"
+          >
+            {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
+
+        <nav className="mt-8 px-4 space-y-2">
+          {[
+            { id: 'pricing-dashboard', label: 'Pricing Dashboard', icon: <LayoutDashboard size={20} /> },
+            { id: 'pricing-approvals', label: 'Pricing Approvals', icon: <CheckCircle2 size={20} /> },
+            { id: 'pricing-calendar', label: 'Pricing Calendar', icon: <Calendar size={20} /> },
+            { id: 'resorts', label: 'Resorts', icon: <Hotel size={20} /> },
+            { id: 'guests', label: 'Guests', icon: <Users size={20} /> },
+            { id: 'settings', label: 'Settings', icon: <Settings size={20} /> },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${
+                activeTab === item.id 
+                  ? 'bg-[#0066ff] text-white shadow-lg shadow-blue-500/20' 
+                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <div className="shrink-0">{item.icon}</div>
+              {isSidebarOpen && <span className="font-bold text-sm">{item.label}</span>}
+            </button>
+          ))}
+        </nav>
+
+        <div className="absolute bottom-8 left-4 right-4">
+          <button
+            onClick={handleLogout}
+            className={`w-full flex items-center gap-4 p-4 rounded-2xl text-red-400 hover:bg-red-500/10 transition-all`}
+          >
+            <LogOut size={20} />
+            {isSidebarOpen && <span className="font-bold text-sm">Sign Out</span>}
+          </button>
+        </div>
+      </motion.aside>
+
+      {/* Main Content */}
+      <main className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'ml-[280px]' : 'ml-[80px]'}`}>
+        {/* Header */}
+        <header className="bg-white border-b border-slate-100 p-6 sticky top-0 z-40">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-4 bg-slate-50 px-4 py-2 rounded-2xl w-96">
+              <Search size={20} className="text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Search pricing, bookings, or resorts..." 
+                className="bg-transparent border-none focus:ring-0 text-sm w-full"
+              />
+            </div>
+
+            <div className="flex items-center gap-6">
+              <button className="relative p-2 text-slate-400 hover:text-[#0066ff] transition-colors">
+                <Bell size={24} />
+                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+              </button>
+              <div className="flex items-center gap-3 pl-6 border-l border-slate-100">
+                <div className="text-right hidden sm:block">
+                  <p className="text-sm font-bold text-slate-900">Sarah Johnson</p>
+                  <p className="text-xs text-slate-400">Admin</p>
+                </div>
+                <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400">
+                  <UserCircle size={24} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Dashboard Content */}
+        <div className="p-8 max-w-7xl mx-auto space-y-8">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.2 }}
+            >
+              {activeTab === 'pricing-dashboard' && renderPricingDashboard()}
+              {activeTab === 'pricing-approvals' && renderPricingApprovals()}
+              {activeTab === 'pricing-calendar' && renderPricingCalendar()}
+              {['resorts', 'guests', 'settings'].includes(activeTab) && (
+                <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                  <Hotel size={64} className="mb-4 opacity-20" />
+                  <p className="text-xl font-bold">Module coming soon</p>
+                  <p className="text-sm">We're working hard to bring you the {activeTab} management module.</p>
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </main>
+    </div>
+  );
+};

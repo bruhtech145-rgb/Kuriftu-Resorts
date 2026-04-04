@@ -32,6 +32,11 @@ if (isPlaceholder) {
 const finalUrl = isValidUrl(supabaseUrl) ? supabaseUrl : 'https://placeholder.supabase.co';
 const finalKey = supabaseAnonKey || 'placeholder-key';
 
-export const supabase = createClient(finalUrl, finalKey);
+export const supabase = createClient(finalUrl, finalKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+  }
+});
 
 export const isSupabaseConfigured = !isPlaceholder;

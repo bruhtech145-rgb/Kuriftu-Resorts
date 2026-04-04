@@ -5,7 +5,8 @@ import { Member } from './types';
 import Layout from './components/Layout';
 import Onboarding from './components/Onboarding';
 import MemberPortal from './components/MemberPortal';
-import AdminDashboard from './components/AdminDashboard';
+import { AdminDashboard } from './components/AdminDashboard';
+import { AdminLogin } from './components/AdminLogin';
 import LandingPage from './components/LandingPage';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -14,6 +15,7 @@ export default function App() {
   const [member, setMember] = useState<Member | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [view, setView] = useState<'home' | 'admin-login' | 'admin-dashboard'>('home');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -80,8 +82,26 @@ export default function App() {
     );
   }
 
+  if (view === 'admin-login') {
+    return (
+      <AdminLogin 
+        onBack={() => setView('home')} 
+        onLoginSuccess={() => setView('admin-dashboard')} 
+      />
+    );
+  }
+
+  if (view === 'admin-dashboard') {
+    return <AdminDashboard onLogout={() => setView('home')} />;
+  }
+
   if (!user) {
-    return <LandingPage onLogin={handleLogin} />;
+    return (
+      <LandingPage 
+        onLogin={handleLogin} 
+        onAdminPortal={() => setView('admin-login')} 
+      />
+    );
   }
 
   if (member && !member.onboarding_completed && !isAdmin) {
@@ -89,8 +109,8 @@ export default function App() {
   }
 
   return (
-    <Layout user={user} member={member} isAdmin={isAdmin} onLogout={handleLogout}>
-      {isAdmin ? <AdminDashboard /> : (member ? <MemberPortal member={member} /> : null)}
+    <Layout user={user} member={member} isAdmin={false} onLogout={handleLogout}>
+      {member ? <MemberPortal member={member} /> : null}
     </Layout>
   );
 }

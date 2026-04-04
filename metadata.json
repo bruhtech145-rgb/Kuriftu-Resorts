@@ -1,6 +1,6 @@
 {
-  "name": "Lalibela Resort & Spa AI Platform",
-  "description": "An AI-powered hospitality management system featuring personalized guest onboarding, dynamic pricing, and revenue analytics.",
+  "name": "Kuriftu Resorts AI Platform",
+  "description": "An AI-powered hospitality management system for Kuriftu Resorts featuring personalized guest onboarding, dynamic pricing, and revenue analytics.",
   "requestFramePermissions": [
     "geolocation"
   ]

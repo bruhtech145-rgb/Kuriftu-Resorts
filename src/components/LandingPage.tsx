@@ -25,9 +25,10 @@ import { RegisterModal } from './RegisterModal';
 
 interface LandingPageProps {
   onLogin: () => void;
+  onAdminPortal: () => void;
 }
 
-export default function LandingPage({ onLogin }: LandingPageProps) {
+export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'rooms' | 'activities'>('rooms');
@@ -36,11 +37,12 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
 
   const destinations = [
     "Kuriftu Resort & Spa African Village",
-    "Kuriftu Entoto Resort and Spa",
     "Kuriftu Resort & Spa Bishoftu",
-    "Kuriftu Resort & Spa Awash Falls",
     "Kuriftu Entoto Adventure Park",
-    "Kuriftu Africa Village Entrance"
+    "Kuriftu Resort & Spa Lake Tana",
+    "Kuriftu Resort & Spa Awash",
+    "Kuriftu Water Park",
+    "Boston Day Spa"
   ];
 
   const guestOptions = [
@@ -85,7 +87,7 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
   const activities = [
     {
       id: 'act-1',
-      name: 'Lalibela Heritage Tour',
+      name: 'Resort Heritage Tour',
       price: 3500,
       rating: 4.9,
       image: 'https://images.unsplash.com/photo-1523805081730-614449379e7d?auto=format&fit=crop&q=80&w=800',
@@ -134,7 +136,7 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
                   Member Portal
                 </button>
                 <button
-                  onClick={onLogin}
+                  onClick={onAdminPortal}
                   className="flex items-center gap-2 text-slate-600 hover:text-[#0066ff] font-bold text-sm px-4 py-2 rounded-xl hover:bg-slate-50 transition-all"
                 >
                   <Settings size={18} />
@@ -174,7 +176,7 @@ export default function LandingPage({ onLogin }: LandingPageProps) {
                   <LogIn size={24} className="text-[#0066ff]" />
                   <span className="font-bold text-sm">Member</span>
                 </button>
-                <button onClick={onLogin} className="flex flex-col items-center gap-3 p-6 bg-slate-50 rounded-[2rem] text-slate-900">
+                <button onClick={onAdminPortal} className="flex flex-col items-center gap-3 p-6 bg-slate-50 rounded-[2rem] text-slate-900">
                   <Settings size={24} className="text-[#0066ff]" />
                   <span className="font-bold text-sm">Admin</span>
                 </button>

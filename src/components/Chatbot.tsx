@@ -1,23 +1,50 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MessageSquare, X, Send, Sparkles, User, Bot } from 'lucide-react';
 import { clsx } from 'clsx';
+import { Member } from '../types';
+import { chatWithAI, ChatMessage, loadConversationHistory } from '../lib/ai-service';
 
-interface Message {
+interface ChatbotProps {
+  member: Member | null;
+}
+
+interface UIMessage {
   id: string;
   text: string;
   sender: 'user' | 'bot';
   timestamp: Date;
 }
 
-export default function Chatbot() {
+export default function Chatbot({ member }: ChatbotProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    { id: '1', text: "Hello! I'm your Lalibela AI Concierge. How can I assist you today?", sender: 'bot', timestamp: new Date() }
+  const [messages, setMessages] = useState<UIMessage[]>([
+    { id: '1', text: "Selam! I'm your Kuriftu AI Concierge. How can I help?", sender: 'bot', timestamp: new Date() }
   ]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Load persistent history when chat opens
+  useEffect(() => {
+    if (!isOpen || historyLoaded || !member) return;
+    setHistoryLoaded(true);
+    loadConversationHistory(member.id).then(history => {
+      if (history.length > 0) {
+        setChatHistory(history);
+        // Show last few messages
+        const recent: UIMessage[] = history.slice(-6).map((m, i) => ({
+          id: `hist-${i}`,
+          text: m.content,
+          sender: m.role === 'user' ? 'user' as const : 'bot' as const,
+          timestamp: new Date(),
+        }));
+        setMessages(prev => [...recent, ...prev]);
+      }
+    }).catch(() => {});
+  }, [isOpen, member?.id]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -26,30 +53,46 @@ export default function Chatbot() {
   }, [messages, isTyping]);
 
   const handleSend = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || isTyping) return;
 
-    const userMsg: Message = {
+    const userMsg: UIMessage = {
       id: Date.now().toString(),
       text: input,
       sender: 'user',
-      timestamp: new Date()
+      timestamp: new Date(),
     };
-
     setMessages(prev => [...prev, userMsg]);
+    const userText = input;
     setInput('');
     setIsTyping(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const botMsg: Message = {
+    const newHistory: ChatMessage[] = [...chatHistory, { role: 'user', content: userText }];
+    setChatHistory(newHistory);
+
+    try {
+      const response = await chatWithAI(newHistory, {
+        memberId: member?.id || 'guest',
+        memberName: member?.full_name || 'Guest',
+      });
+
+      const botMsg: UIMessage = {
         id: (Date.now() + 1).toString(),
-        text: "I'd be happy to help with that! Based on your preferences, I recommend the 'Lalibela Heritage Tour' which explores the 11 rock-hewn churches. Would you like me to check availability for you?",
+        text: response,
         sender: 'bot',
-        timestamp: new Date()
+        timestamp: new Date(),
       };
       setMessages(prev => [...prev, botMsg]);
+      setChatHistory(prev => [...prev, { role: 'assistant', content: response }]);
+    } catch {
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        text: "I'm having trouble connecting. Please try again.",
+        sender: 'bot',
+        timestamp: new Date(),
+      }]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   return (
@@ -84,7 +127,7 @@ export default function Chatbot() {
                   <h3 className="font-serif text-lg">AI Concierge</h3>
                   <div className="flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-                    <span className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">Online 24/7</span>
+                    <span className="text-[10px] text-stone-400 uppercase tracking-widest font-bold">Powered by Groq</span>
                   </div>
                 </div>
               </div>
@@ -110,9 +153,9 @@ export default function Chatbot() {
                     {msg.sender === 'user' ? <User size={16} /> : <Bot size={16} />}
                   </div>
                   <div className={clsx(
-                    "p-4 rounded-2xl text-sm leading-relaxed",
-                    msg.sender === 'user' 
-                      ? "bg-stone-900 text-white rounded-tr-none" 
+                    "p-4 rounded-2xl text-sm leading-relaxed whitespace-pre-line",
+                    msg.sender === 'user'
+                      ? "bg-stone-900 text-white rounded-tr-none"
                       : "bg-white text-stone-800 border border-stone-100 shadow-sm rounded-tl-none"
                   )}>
                     {msg.text}
@@ -142,13 +185,14 @@ export default function Chatbot() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                   placeholder="Ask me anything..."
-                  className="w-full pl-4 pr-12 py-4 bg-stone-50 border border-stone-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-stone-900/5 transition-all"
+                  disabled={isTyping}
+                  className="w-full pl-4 pr-12 py-4 bg-stone-50 border border-stone-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-stone-900/5 transition-all disabled:opacity-60"
                 />
                 <button
                   onClick={handleSend}
-                  disabled={!input.trim()}
+                  disabled={!input.trim() || isTyping}
                   className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-stone-900 text-white rounded-xl hover:bg-stone-800 transition-colors disabled:opacity-50"
                 >
                   <Send size={20} />

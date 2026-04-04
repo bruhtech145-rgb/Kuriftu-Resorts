@@ -19,16 +19,8 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onBack, onLoginSuccess }
     setLoading(true);
     setError(null);
 
-    // Default Admin Bypass for Prototype
-    if (username === 'admin' && password === 'admin123') {
-      setTimeout(() => {
-        onLoginSuccess();
-        setLoading(false);
-      }, 1000);
-      return;
-    }
-
     try {
+      // Sign in with Supabase Auth
       const { data, error: loginError } = await supabase.auth.signInWithPassword({
         email: username,
         password,
@@ -36,8 +28,12 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onBack, onLoginSuccess }
 
       if (loginError) throw loginError;
 
-      // Check if the user is an admin
-    if (data.user) {
+      if (!data.user) {
+        setError('Login failed. Please try again.');
+        return;
+      }
+
+      // Check if user is admin in profiles table
       const { data: profile } = await supabase
         .from('profiles')
         .select('is_admin')
@@ -47,15 +43,15 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onBack, onLoginSuccess }
       if (profile?.is_admin) {
         onLoginSuccess();
       } else {
+        // Not an admin — sign them out and show error
         await supabase.auth.signOut();
-        setError('Unauthorized: You do not have admin privileges.');
+        setError('Access denied. You do not have admin privileges.');
       }
-    }
     } catch (err: any) {
       console.error('Admin login error:', err);
       let message = err.message || 'Invalid email or password.';
-      if (message.includes('API key')) {
-        message = 'The Supabase API key is invalid. Please check your VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY in settings.';
+      if (message.includes('Invalid login credentials')) {
+        message = 'Invalid email or password.';
       }
       setError(message);
     } finally {
@@ -95,13 +91,13 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onBack, onLoginSuccess }
           )}
 
           <div className="space-y-2">
-            <label className="text-sm font-bold text-slate-700 ml-1">Username</label>
+            <label className="text-sm font-bold text-slate-700 ml-1">Email</label>
             <div className="relative group">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-[#0066ff] transition-colors" size={20} />
               <input
                 required
-                type="text"
-                placeholder="admin"
+                type="email"
+                placeholder="admin@kuriftu.com"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 focus:border-[#0066ff] transition-all"
@@ -116,7 +112,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onBack, onLoginSuccess }
               <input
                 required
                 type="password"
-                placeholder="admin123"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 focus:border-[#0066ff] transition-all"

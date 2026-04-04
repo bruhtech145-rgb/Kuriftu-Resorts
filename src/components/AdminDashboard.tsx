@@ -39,6 +39,9 @@ import {
   Area 
 } from 'recharts';
 import { supabase } from '../lib/supabase';
+import { runAdminAnalysis, triggerAgentCron, dismissAlert, DashboardAnalysis } from '../lib/admin-agent';
+import { AdminNotifications, AIInsightsPanel, AdminAIChat } from './AdminAIPanel';
+import { Sparkles as SparklesIcon } from 'lucide-react';
 
 interface AdminDashboardProps {
   onLogout: () => void;
@@ -46,7 +49,7 @@ interface AdminDashboardProps {
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState('pricing-dashboard');
+  const [activeTab, setActiveTab] = useState('ai-insights');
   const [guests, setGuests] = useState<any[]>([]);
   const [loadingGuests, setLoadingGuests] = useState(false);
 
@@ -57,9 +60,60 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const [resortApprovals, setResortApprovals] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
+  // AI Agent state
+  const [aiAnalysis, setAiAnalysis] = useState<DashboardAnalysis | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [cronRunning, setCronRunning] = useState(false);
+  const [dismissedAlerts, setDismissedAlerts] = useState<string[]>([]);
+  const [showAIChat, setShowAIChat] = useState(false);
+
   useEffect(() => {
     fetchDashboardData();
+    runAIAnalysis();
   }, []);
+
+  const handleTriggerCron = async () => {
+    setCronRunning(true);
+    try {
+      await triggerAgentCron();
+      // Refresh analysis after cron writes new alerts
+      await runAIAnalysis();
+    } catch (e) {
+      console.error('Cron trigger error:', e);
+    } finally {
+      setCronRunning(false);
+    }
+  };
+
+  const handleDismissAlert = (id: string) => {
+    setDismissedAlerts(prev => [...prev, id]);
+    dismissAlert(id).catch(() => {});
+  };
+
+  const runAIAnalysis = async () => {
+    setAiLoading(true);
+    try {
+      console.log('Starting AI analysis...');
+      const result = await runAdminAnalysis();
+      console.log('AI analysis result:', result);
+      setAiAnalysis(result);
+    } catch (error) {
+      console.error('AI analysis error:', error);
+      // Set a fallback analysis so the panel still shows something
+      setAiAnalysis({
+        alerts: [],
+        insights: [],
+        summary: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}. Click refresh to retry.`,
+        occupancyRate: 0,
+        totalBookings: 0,
+        todayRevenue: 0,
+        upcomingEvents: [],
+        demandForecast: 'N/A',
+      });
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const fetchDashboardData = async () => {
     setLoadingData(true);
@@ -179,28 +233,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             </div>
           </div>
           <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={trendData}>
-                <defs>
-                  <linearGradient id="colorCurrent" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0066ff" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#0066ff" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorSuggested" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
-                <Tooltip 
-                  contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
-                />
-                <Area type="monotone" dataKey="current" stroke="#0066ff" strokeWidth={3} fillOpacity={1} fill="url(#colorCurrent)" />
-                <Area type="monotone" dataKey="suggested" stroke="#f59e0b" strokeWidth={3} fillOpacity={1} fill="url(#colorSuggested)" />
-              </AreaChart>
-            </ResponsiveContainer>
+            {loadingData ? (
+              <div className="w-full h-full flex items-center justify-center text-slate-400">
+                <RefreshCw size={24} className="animate-spin mr-3" />
+                Loading trends...
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={trendData}>
+                  <defs>
+                    <linearGradient id="colorCurrent" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#0066ff" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#0066ff" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorSuggested" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                  <YAxis axisLine={false} tickLine={false} tick={{fill: '#94a3b8', fontSize: 12}} />
+                  <Tooltip 
+                    contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
+                  />
+                  <Area type="monotone" dataKey="current" stroke="#0066ff" strokeWidth={3} fillOpacity={1} fill="url(#colorCurrent)" />
+                  <Area type="monotone" dataKey="suggested" stroke="#f59e0b" strokeWidth={3} fillOpacity={1} fill="url(#colorSuggested)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -255,30 +316,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
           <button className="text-[#0066ff] font-bold text-sm hover:underline">View All Suggestions</button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {recommendations.map((rec, i) => (
-            <div key={i} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 hover:border-[#0066ff]/30 transition-all group">
-              <h4 className="font-bold text-slate-900 mb-1">{rec.type}</h4>
-              <p className="text-xs text-slate-400 mb-4">{rec.reason}</p>
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Current</p>
-                  <p className="text-lg font-bold text-slate-900">${rec.current}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Suggested</p>
-                  <p className="text-lg font-bold text-[#0066ff]">${rec.suggested}</p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-                <div className="flex items-center gap-1 text-green-500 font-bold text-xs">
-                  <ArrowUpRight size={14} /> {rec.change}
-                </div>
-                <div className="text-[10px] font-bold text-slate-400">
-                  Confidence: <span className="text-slate-900">{rec.confidence}</span>
-                </div>
-              </div>
+          {loadingData ? (
+            <div className="col-span-full flex items-center justify-center py-12 text-slate-400">
+              <RefreshCw size={24} className="animate-spin mr-3" />
+              Loading recommendations...
             </div>
-          ))}
+          ) : recommendations.length === 0 ? (
+            <div className="col-span-full text-center py-12 text-slate-500 font-bold">No recommendations found</div>
+          ) : (
+            recommendations.map((rec, i) => (
+              <div key={i} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 hover:border-[#0066ff]/30 transition-all group">
+                <h4 className="font-bold text-slate-900 mb-1">{rec.type}</h4>
+                <p className="text-xs text-slate-400 mb-4">{rec.reason}</p>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Current</p>
+                    <p className="text-lg font-bold text-slate-900">${rec.current}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Suggested</p>
+                    <p className="text-lg font-bold text-[#0066ff]">${rec.suggested}</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+                  <div className="flex items-center gap-1 text-green-500 font-bold text-xs">
+                    <ArrowUpRight size={14} /> {rec.change}
+                  </div>
+                  <div className="text-[10px] font-bold text-slate-400">
+                    Confidence: <span className="text-slate-900">{rec.confidence}</span>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>
@@ -307,41 +377,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {pricingApprovals.map((approval) => (
-              <tr key={approval.id} className="hover:bg-slate-50/50 transition-colors group">
-                <td className="px-8 py-6 font-bold text-slate-900">{approval.roomType}</td>
-                <td className="px-8 py-6 text-slate-500 font-medium">{approval.date}</td>
-                <td className="px-8 py-6 font-bold text-slate-400">${approval.current}</td>
-                <td className="px-8 py-6 font-bold text-slate-900">${approval.suggested}</td>
-                <td className="px-8 py-6">
-                  <input 
-                    type="text" 
-                    defaultValue={approval.suggested} 
-                    className="w-20 px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-900 focus:outline-none focus:border-[#0066ff]"
-                  />
-                </td>
-                <td className="px-8 py-6">
-                  <span className={`font-bold ${approval.change.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>
-                    {approval.change}
-                  </span>
-                </td>
-                <td className="px-8 py-6">
-                  <span className="px-3 py-1 bg-amber-100 text-amber-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                    {approval.status}
-                  </span>
-                </td>
-                <td className="px-8 py-6 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button className="p-2 text-green-500 hover:bg-green-50 rounded-xl transition-colors">
-                      <CheckCircle2 size={20} />
-                    </button>
-                    <button className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors">
-                      <XCircle size={20} />
-                    </button>
+            {loadingData ? (
+              <tr>
+                <td colSpan={8} className="px-8 py-12 text-center text-slate-400">
+                  <div className="flex justify-center items-center gap-3">
+                    <RefreshCw size={24} className="animate-spin text-[#0066ff]" />
+                    Loading approvals...
                   </div>
                 </td>
               </tr>
-            ))}
+            ) : pricingApprovals.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="px-8 py-12 text-center text-slate-500 font-bold">No pricing approvals pending</td>
+              </tr>
+            ) : (
+              pricingApprovals.map((approval) => (
+                <tr key={approval.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="px-8 py-6 font-bold text-slate-900">{approval.roomType}</td>
+                  <td className="px-8 py-6 text-slate-500 font-medium">{approval.date}</td>
+                  <td className="px-8 py-6 font-bold text-slate-400">${approval.current}</td>
+                  <td className="px-8 py-6 font-bold text-slate-900">${approval.suggested}</td>
+                  <td className="px-8 py-6">
+                    <input 
+                      type="text" 
+                      defaultValue={approval.suggested} 
+                      className="w-20 px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-900 focus:outline-none focus:border-[#0066ff]"
+                    />
+                  </td>
+                  <td className="px-8 py-6">
+                    <span className={`font-bold ${approval.change.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>
+                      {approval.change}
+                    </span>
+                  </td>
+                  <td className="px-8 py-6">
+                    <span className="px-3 py-1 bg-amber-100 text-amber-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                      {approval.status}
+                    </span>
+                  </td>
+                  <td className="px-8 py-6 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button className="p-2 text-green-500 hover:bg-green-50 rounded-xl transition-colors">
+                        <CheckCircle2 size={20} />
+                      </button>
+                      <button className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors">
+                        <XCircle size={20} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -443,52 +528,67 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {resortApprovals.map((approval) => (
-              <tr key={approval.id} className="hover:bg-slate-50/50 transition-colors group">
-                <td className="px-8 py-6">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-[#0066ff]">
-                      <Hotel size={18} />
-                    </div>
-                    <span className="font-bold text-slate-900">{approval.resort}</span>
-                  </div>
-                </td>
-                <td className="px-8 py-6">
-                  <div className="flex items-center gap-2">
-                    <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full ${parseInt(approval.occupancy) > 80 ? 'bg-orange-500' : 'bg-blue-500'}`} 
-                        style={{ width: approval.occupancy }} 
-                      />
-                    </div>
-                    <span className="text-sm font-bold text-slate-600">{approval.occupancy}</span>
-                  </div>
-                </td>
-                <td className="px-8 py-6 font-bold text-slate-400">{approval.currentRate}</td>
-                <td className="px-8 py-6 font-bold text-[#0066ff]">{approval.suggestedRate}</td>
-                <td className="px-8 py-6">
-                  <span className={`font-bold text-xs ${approval.change.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>
-                    {approval.change}
-                  </span>
-                </td>
-                <td className="px-8 py-6">
-                  <div className="flex items-center gap-2 text-slate-500 text-xs italic">
-                    <Clock size={14} />
-                    {approval.reason}
-                  </div>
-                </td>
-                <td className="px-8 py-6 text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-green-500/20 active:scale-95">
-                      Approve
-                    </button>
-                    <button className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all active:scale-95">
-                      Reject
-                    </button>
+            {loadingData ? (
+              <tr>
+                <td colSpan={7} className="px-8 py-12 text-center text-slate-400">
+                  <div className="flex justify-center items-center gap-3">
+                    <RefreshCw size={24} className="animate-spin text-[#0066ff]" />
+                    Loading resort approvals...
                   </div>
                 </td>
               </tr>
-            ))}
+            ) : resortApprovals.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-8 py-12 text-center text-slate-500 font-bold">No resort approvals pending</td>
+              </tr>
+            ) : (
+              resortApprovals.map((approval) => (
+                <tr key={approval.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-[#0066ff]">
+                        <Hotel size={18} />
+                      </div>
+                      <span className="font-bold text-slate-900">{approval.resort}</span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-2">
+                      <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full ${parseInt(approval.occupancy) > 80 ? 'bg-orange-500' : 'bg-blue-500'}`} 
+                          style={{ width: approval.occupancy }} 
+                        />
+                      </div>
+                      <span className="text-sm font-bold text-slate-600">{approval.occupancy}</span>
+                    </div>
+                  </td>
+                  <td className="px-8 py-6 font-bold text-slate-400">{approval.currentRate}</td>
+                  <td className="px-8 py-6 font-bold text-[#0066ff]">{approval.suggestedRate}</td>
+                  <td className="px-8 py-6">
+                    <span className={`font-bold text-xs ${approval.change.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>
+                      {approval.change}
+                    </span>
+                  </td>
+                  <td className="px-8 py-6">
+                    <div className="flex items-center gap-2 text-slate-500 text-xs italic">
+                      <Clock size={14} />
+                      {approval.reason}
+                    </div>
+                  </td>
+                  <td className="px-8 py-6 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-green-500/20 active:scale-95">
+                        Approve
+                      </button>
+                      <button className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all active:scale-95">
+                        Reject
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -590,6 +690,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
 
         <nav className="mt-8 px-4 space-y-2">
           {[
+            { id: 'ai-insights', label: 'AI Insights', icon: <SparklesIcon size={20} /> },
             { id: 'pricing-dashboard', label: 'Pricing Dashboard', icon: <LayoutDashboard size={20} /> },
             { id: 'pricing-approvals', label: 'Pricing Approvals', icon: <CheckCircle2 size={20} /> },
             { id: 'pricing-calendar', label: 'Pricing Calendar', icon: <Calendar size={20} /> },
@@ -638,9 +739,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             </div>
 
             <div className="flex items-center gap-6">
+              <button
+                onClick={handleTriggerCron}
+                disabled={cronRunning}
+                className="flex items-center gap-2 px-4 py-2 bg-[#0066ff] text-white rounded-xl text-sm font-bold hover:bg-[#0052cc] transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20"
+              >
+                <SparklesIcon size={16} className={cronRunning ? 'animate-spin' : ''} />
+                {cronRunning ? 'Running...' : 'Run AI Agent'}
+              </button>
               <button className="relative p-2 text-slate-400 hover:text-[#0066ff] transition-colors">
                 <Bell size={24} />
-                <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white" />
+                {aiAnalysis && aiAnalysis.alerts.filter(a => !dismissedAlerts.includes(a.id)).length > 0 && (
+                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-[10px] font-bold flex items-center justify-center border-2 border-white">
+                    {aiAnalysis.alerts.filter(a => !dismissedAlerts.includes(a.id)).length}
+                  </span>
+                )}
               </button>
               <div className="flex items-center gap-3 pl-6 border-l border-slate-100">
                 <div className="text-right hidden sm:block">
@@ -665,6 +778,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.2 }}
             >
+              {activeTab === 'ai-insights' && (
+                <AIInsightsPanel analysis={aiAnalysis} loading={aiLoading} onRefresh={runAIAnalysis} />
+              )}
               {activeTab === 'pricing-dashboard' && renderPricingDashboard()}
               {activeTab === 'pricing-approvals' && renderPricingApprovals()}
               {activeTab === 'pricing-calendar' && renderPricingCalendar()}
@@ -681,6 +797,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
           </AnimatePresence>
         </div>
       </main>
+
+      {/* AI Notifications */}
+      {aiAnalysis && (
+        <AdminNotifications
+          alerts={aiAnalysis.alerts.filter(a => !dismissedAlerts.includes(a.id))}
+          onDismiss={handleDismissAlert}
+        />
+      )}
+
+      {/* AI Chat FAB */}
+      <button
+        onClick={() => setShowAIChat(!showAIChat)}
+        className="fixed bottom-6 right-6 w-14 h-14 bg-[#0066ff] text-white rounded-full shadow-2xl shadow-blue-500/30 flex items-center justify-center hover:scale-110 transition-transform z-[70]"
+      >
+        <SparklesIcon size={24} />
+      </button>
+
+      {/* AI Chat Panel */}
+      <AdminAIChat isOpen={showAIChat} onClose={() => setShowAIChat(false)} />
     </div>
   );
 };

@@ -3,6 +3,7 @@ import { LogOut, User, LayoutDashboard, Calendar, MessageSquare, Menu, X } from 
 import { Member } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
+import Chatbot from './Chatbot';
 
 interface LayoutProps {
   user: any;
@@ -172,6 +173,9 @@ export default function Layout({ user, member, isAdmin, onLogout, activeTab, onT
           {children}
         </div>
       </main>
+
+      {/* Floating Chatbot (only on non-concierge tabs) */}
+      {activeTab !== 'concierge' && <Chatbot member={member} />}
     </div>
   );
 }

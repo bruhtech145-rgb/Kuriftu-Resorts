@@ -18,7 +18,8 @@ import {
   X,
   Settings,
   Sparkles,
-  Palmtree
+  Palmtree,
+  TrendingUp
 } from 'lucide-react';
 import { AIItineraryBuilder } from './AIItineraryBuilder';
 import { RegisterModal } from './RegisterModal';
@@ -41,6 +42,26 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
   const [checkOut, setCheckOut] = useState('2026-04-20');
   const [searchResults, setSearchResults] = useState<any[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [activeSection, setActiveSection] = useState('resorts');
+
+  // Track which section is in view for nav highlight
+  useEffect(() => {
+    const sections = ['resorts', 'features', 'services', 'how-it-works', 'about'];
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          setActiveSection(entry.target.id);
+        }
+      }
+    }, { threshold: 0.3, rootMargin: '-80px 0px 0px 0px' });
+
+    sections.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   // Fetch real services from Supabase
   const [featuredRooms, setFeaturedRooms] = useState<any[]>([]);
@@ -175,11 +196,22 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
               </div>
               
               <div className="hidden lg:flex items-center gap-8 text-sm font-bold text-slate-500">
-                <a href="#" className="text-[#0066ff] relative after:absolute after:bottom-[-28px] after:left-0 after:right-0 after:h-1 after:bg-[#0066ff] after:rounded-full">Resorts</a>
-                <a href="#" className="hover:text-[#0066ff] transition-colors">Spa & Wellness</a>
-                <a href="#" className="hover:text-[#0066ff] transition-colors">Dining</a>
-                <a href="#" className="hover:text-[#0066ff] transition-colors">Activities</a>
-                <a href="#" className="hover:text-[#0066ff] transition-colors">Water Park</a>
+                {[
+                  { id: 'resorts', label: 'Resorts' },
+                  { id: 'features', label: 'Features' },
+                  { id: 'services', label: 'Services' },
+                  { id: 'how-it-works', label: 'How It Works' },
+                  { id: 'about', label: 'About Us' },
+                ].map(nav => (
+                  <a
+                    key={nav.id}
+                    href={`#${nav.id}`}
+                    onClick={() => setActiveSection(nav.id)}
+                    className={`transition-colors relative ${activeSection === nav.id ? 'text-[#0066ff] after:absolute after:bottom-[-28px] after:left-0 after:right-0 after:h-1 after:bg-[#0066ff] after:rounded-full' : 'hover:text-[#0066ff]'}`}
+                  >
+                    {nav.label}
+                  </a>
+                ))}
               </div>
             </div>
 
@@ -240,16 +272,16 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
               </div>
 
               {[
-                { label: 'Resorts', icon: <Palmtree size={20} /> },
-                { label: 'Spa & Wellness', icon: <Waves size={20} /> },
-                { label: 'Dining', icon: <Utensils size={20} /> },
-                { label: 'Activities', icon: <Compass size={20} /> },
-                { label: 'Water Park', icon: <Waves size={20} /> },
-                { label: 'Meetings', icon: <Users size={20} /> },
+                { label: 'Resorts', icon: <Palmtree size={20} />, href: '#resorts' },
+                { label: 'Features', icon: <Sparkles size={20} />, href: '#features' },
+                { label: 'Services', icon: <Compass size={20} />, href: '#services' },
+                { label: 'How It Works', icon: <ArrowRight size={20} />, href: '#how-it-works' },
+                { label: 'About Us', icon: <Users size={20} />, href: '#about' },
               ].map((link) => (
-                <a 
+                <a
                   key={link.label}
-                  href="#" 
+                  href={link.href}
+                  onClick={() => setIsMenuOpen(false)}
                   className="flex items-center justify-between p-6 hover:bg-slate-50 rounded-3xl transition-colors group"
                 >
                   <div className="flex items-center gap-4">
@@ -277,7 +309,7 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
       </AnimatePresence>
 
       {/* Hero Section with Trip.com Style Search */}
-      <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
+      <section id="resorts" className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img
             src="https://images.unsplash.com/photo-1542314831-068cd1dbfeeb?auto=format&fit=crop&q=80&w=1920"
@@ -467,7 +499,7 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
         </section>
       )}
 
-      {/* Main Content */}
+      {/* Main Content — Resorts */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         {/* Tabs */}
         <div className="flex items-center gap-6 mb-8 border-b border-slate-200 overflow-x-auto">
@@ -552,6 +584,203 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
         </div>
       </main>
 
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* FEATURES SECTION */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      <section id="features" className="py-24 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
+            <span className="text-[#0066ff] text-sm font-bold uppercase tracking-widest">Why Choose Kuriftu</span>
+            <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mt-4 mb-6">AI-Powered Luxury Hospitality</h2>
+            <p className="text-xl text-slate-500 max-w-3xl mx-auto">The first resort in Ethiopia to combine world-class hospitality with artificial intelligence — creating stays that are personal, seamless, and unforgettable.</p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {[
+              { icon: <Sparkles size={28} />, title: 'Agentic AI', desc: 'Our autonomous AI agent runs 24/7 — creating packages, adjusting pricing, pushing alerts, and managing operations without human intervention. It thinks, decides, and acts.', color: 'bg-blue-50 text-[#0066ff]', badge: 'Core AI' },
+              { icon: <TrendingUp size={28} />, title: 'Dynamic Price Prediction', desc: 'AI predicts optimal room pricing based on occupancy, Ethiopian holidays, fasting seasons, weekend demand, and competitor analysis — maximizing revenue automatically.', color: 'bg-amber-50 text-amber-600', badge: 'Revenue AI' },
+              { icon: <Search size={28} />, title: 'Market Prediction', desc: 'Forecasts demand 7-30 days ahead using Ethiopian calendar events (Timkat, Meskel, Fasika), tourism seasons, and historical booking patterns to stay ahead of the market.', color: 'bg-green-50 text-green-600', badge: 'Forecast AI' },
+              { icon: <Users size={28} />, title: 'Occupancy-Based Auto Actions', desc: 'When occupancy drops below 30%, AI launches promotions and flash deals. Above 80%, it activates premium pricing. Cancellations trigger automatic waitlist notifications.', color: 'bg-red-50 text-red-600', badge: 'Auto-Pilot' },
+              { icon: <Star size={28} />, title: 'AI Concierge & Booking', desc: 'Personal AI assistant that knows each guest — their preferences, past bookings, dietary needs. Books rooms, spa, dining via chat. Works on web and Telegram.', color: 'bg-purple-50 text-purple-600', badge: 'Guest AI' },
+              { icon: <Calendar size={28} />, title: 'Ethiopian Calendar Intelligence', desc: 'Built-in awareness of all Ethiopian holidays, Orthodox fasting periods, and tourism seasons. Auto-adjusts menus (vegan for fasting), pricing, and staffing recommendations.', color: 'bg-stone-100 text-stone-700', badge: 'Cultural AI' },
+              { icon: <MapPin size={28} />, title: '7 Resort Locations', desc: 'From Bishoftu crater lakes to Lake Tana, Entoto mountains to Awash Falls — each property offers a unique Ethiopian landscape with AI-optimized operations.', color: 'bg-rose-50 text-rose-600', badge: null },
+              { icon: <Coffee size={28} />, title: 'Signature Experiences', desc: 'Traditional coffee spa, heritage tours, lakeside BBQ with live music, and farm-to-table dining — all bookable through AI with personalized recommendations.', color: 'bg-cyan-50 text-cyan-600', badge: null },
+              { icon: <ShieldCheck size={28} />, title: 'Loyalty & Rewards', desc: 'AI tracks guest spending and preferences to auto-upgrade loyalty tiers: Explorer → Trekker → Summit → Pinnacle. Each tier unlocks exclusive perks and priority booking.', color: 'bg-indigo-50 text-indigo-600', badge: null },
+            ].map((feature, i) => (
+              <motion.div
+                key={feature.title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                className="group p-8 rounded-[2rem] border border-slate-100 hover:border-[#0066ff]/20 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300"
+              >
+                <div className="flex items-start justify-between mb-6">
+                  <div className={`w-14 h-14 ${feature.color} rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                    {feature.icon}
+                  </div>
+                  {feature.badge && (
+                    <span className="text-[10px] font-bold uppercase tracking-widest text-[#0066ff] bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100">
+                      {feature.badge}
+                    </span>
+                  )}
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-3">{feature.title}</h3>
+                <p className="text-slate-500 leading-relaxed text-sm">{feature.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* SERVICES SECTION */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      <section id="services" className="py-24 bg-[#f5f7fa]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
+            <span className="text-[#0066ff] text-sm font-bold uppercase tracking-widest">Our Offerings</span>
+            <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mt-4 mb-6">Experiences Crafted for You</h2>
+            <p className="text-xl text-slate-500 max-w-3xl mx-auto">From luxury rooms to adventure activities, world-class dining to restorative wellness — every experience is designed to exceed expectations.</p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              { category: 'Rooms', count: featuredRooms.length, icon: '🏨', desc: 'Luxury suites, garden villas, and heritage rooms with stunning views', gradient: 'from-blue-600 to-blue-800' },
+              { category: 'Activities', count: activities.filter(a => a.category === 'Activities').length, icon: '🏔️', desc: 'Kayaking, trekking, bird watching, heritage tours, and more', gradient: 'from-green-600 to-green-800' },
+              { category: 'Dining', count: activities.filter(a => a.category === 'Dining').length, icon: '🍽️', desc: 'Ethiopian fine dining, lakeside BBQ, traditional coffee ceremonies', gradient: 'from-amber-600 to-amber-800' },
+              { category: 'Wellness', count: activities.filter(a => a.category === 'Wellness').length, icon: '🧘', desc: 'Coffee spa, hot springs, yoga retreats, and meditation by the lake', gradient: 'from-purple-600 to-purple-800' },
+            ].map((cat, i) => (
+              <motion.div
+                key={cat.category}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
+                onClick={() => { setActiveTab(cat.category.toLowerCase() as any); document.getElementById('resorts')?.scrollIntoView({ behavior: 'smooth' }); }}
+                className="group cursor-pointer relative overflow-hidden rounded-[2rem] p-8 text-white min-h-[280px] flex flex-col justify-end"
+              >
+                <div className={`absolute inset-0 bg-gradient-to-br ${cat.gradient}`} />
+                <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition-colors" />
+                <div className="relative z-10">
+                  <span className="text-5xl mb-4 block">{cat.icon}</span>
+                  <h3 className="text-2xl font-bold mb-2">{cat.category}</h3>
+                  <p className="text-white/80 text-sm leading-relaxed mb-3">{cat.desc}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/60 text-sm font-bold">{cat.count} available</span>
+                    <ArrowRight size={20} className="group-hover:translate-x-2 transition-transform" />
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* HOW IT WORKS SECTION */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      <section id="how-it-works" className="py-24 bg-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-center mb-16">
+            <span className="text-[#0066ff] text-sm font-bold uppercase tracking-widest">Simple & Seamless</span>
+            <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mt-4 mb-6">How It Works</h2>
+            <p className="text-xl text-slate-500 max-w-3xl mx-auto">From discovery to checkout, your entire journey is powered by AI — making every step effortless.</p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 relative">
+            {/* Connecting line */}
+            <div className="hidden md:block absolute top-16 left-[12%] right-[12%] h-0.5 bg-gradient-to-r from-[#0066ff] via-amber-500 to-green-500" />
+
+            {[
+              { step: '01', title: 'Search & Discover', desc: 'Browse rooms, activities, dining, and wellness by date, guests, and preferences. Real-time availability from our database.', color: 'bg-[#0066ff]' },
+              { step: '02', title: 'AI Personalizes', desc: 'Our AI Concierge learns your tastes — whether you love wellness, adventure, or fine dining — and recommends the perfect experiences.', color: 'bg-amber-500' },
+              { step: '03', title: 'Book Instantly', desc: 'One-click booking with instant confirmation. Pay securely. Your reservation is live — no waiting, no callbacks.', color: 'bg-green-500' },
+              { step: '04', title: 'Enjoy & Earn', desc: 'Experience Ethiopia at its finest. Earn loyalty points, get AI-curated suggestions during your stay, and unlock exclusive perks.', color: 'bg-purple-500' },
+            ].map((item, i) => (
+              <motion.div
+                key={item.step}
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.15 }}
+                className="text-center relative"
+              >
+                <div className={`w-16 h-16 ${item.color} text-white rounded-2xl flex items-center justify-center mx-auto mb-6 text-2xl font-bold shadow-lg relative z-10`}>
+                  {item.step}
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 mb-3">{item.title}</h3>
+                <p className="text-slate-500 text-sm leading-relaxed">{item.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+
+          {/* CTA */}
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+            className="mt-16 text-center">
+            <button
+              onClick={() => setIsLoginOpen(true)}
+              className="bg-[#0066ff] hover:bg-[#0052cc] text-white px-10 py-5 rounded-2xl font-bold text-lg transition-all shadow-xl shadow-blue-500/20 active:scale-95"
+            >
+              Start Your Journey
+            </button>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* ABOUT US SECTION */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      <section id="about" className="py-24 bg-slate-900 text-white overflow-hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+            <motion.div initial={{ opacity: 0, x: -30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}>
+              <span className="text-[#0066ff] text-sm font-bold uppercase tracking-widest">Our Story</span>
+              <h2 className="text-4xl md:text-5xl font-bold mt-4 mb-6 leading-tight">Ethiopia's Premier Luxury Resort Brand</h2>
+              <p className="text-slate-400 text-lg leading-relaxed mb-6">
+                Kuriftu Resort & Spa was born from a vision to showcase Ethiopia's breathtaking landscapes through world-class hospitality.
+                From the volcanic crater lakes of Bishoftu to the ancient shores of Lake Tana, each property tells a unique story of Ethiopian heritage and modern luxury.
+              </p>
+              <p className="text-slate-400 text-lg leading-relaxed mb-8">
+                Today, we're pioneering AI-powered hospitality in Africa — using artificial intelligence to personalize every guest's experience
+                while preserving the warmth and authenticity that makes Ethiopian hospitality legendary.
+              </p>
+
+              <div className="grid grid-cols-3 gap-6">
+                <div>
+                  <p className="text-4xl font-bold text-[#0066ff]">7</p>
+                  <p className="text-slate-500 text-sm font-bold mt-1">Resort Locations</p>
+                </div>
+                <div>
+                  <p className="text-4xl font-bold text-amber-500">15+</p>
+                  <p className="text-slate-500 text-sm font-bold mt-1">Years of Excellence</p>
+                </div>
+                <div>
+                  <p className="text-4xl font-bold text-green-500">50K+</p>
+                  <p className="text-slate-500 text-sm font-bold mt-1">Happy Guests</p>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div initial={{ opacity: 0, x: 30 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }}
+              className="relative">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <img src="https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?auto=format&fit=crop&q=80&w=400&h=300" alt="Kuriftu Resort" className="rounded-2xl w-full h-48 object-cover" referrerPolicy="no-referrer" />
+                  <img src="https://images.unsplash.com/photo-1544161515-4af6b1d462c2?auto=format&fit=crop&q=80&w=400&h=400" alt="Ethiopian Spa" className="rounded-2xl w-full h-64 object-cover" referrerPolicy="no-referrer" />
+                </div>
+                <div className="space-y-4 pt-8">
+                  <img src="https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&q=80&w=400&h=400" alt="Luxury Suite" className="rounded-2xl w-full h-64 object-cover" referrerPolicy="no-referrer" />
+                  <img src="https://images.unsplash.com/photo-1414235077428-338989a2e8c0?auto=format&fit=crop&q=80&w=400&h=300" alt="Ethiopian Dining" className="rounded-2xl w-full h-48 object-cover" referrerPolicy="no-referrer" />
+                </div>
+              </div>
+              {/* Decorative element */}
+              <div className="absolute -bottom-8 -right-8 w-40 h-40 bg-[#0066ff]/10 rounded-full blur-3xl" />
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
       {/* AI Itinerary Builder */}
       <AIItineraryBuilder />
 
@@ -560,7 +789,6 @@ export default function LandingPage({ onLogin, onAdminPortal }: LandingPageProps
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
         onSwitchToRegister={() => { setIsLoginOpen(false); setIsRegisterOpen(true); }}
-        onGoogleLogin={onLogin}
       />
 
       {/* Registration Modal */}

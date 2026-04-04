@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Member, Service, Preferences, PricingRule } from '../types';
 import { supabase } from '../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
-import { Search, Filter, Sparkles, Star, MapPin, Clock, Users, ChevronRight, Tag } from 'lucide-react';
+import { Search, Filter, Sparkles, Star, MapPin, Clock, Users, ChevronRight, Tag, TrendingUp } from 'lucide-react';
 import { clsx } from 'clsx';
 import BookingModal from './BookingModal';
 import { calculateDynamicPrice } from '../lib/pricing';
@@ -14,6 +14,7 @@ interface MemberPortalProps {
 export default function MemberPortal({ member }: MemberPortalProps) {
   const [services, setServices] = useState<Service[]>([]);
   const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
+  const [roomAvailability, setRoomAvailability] = useState<Record<string, number>>({});
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
@@ -45,6 +46,25 @@ export default function MemberPortal({ member }: MemberPortalProps) {
       }
     };
 
+    // Fetch room availability
+    const fetchAvailability = async () => {
+      const { data, error } = await supabase
+        .from('rooms')
+        .select('type, status');
+      
+      if (data) {
+        const counts: Record<string, number> = {};
+        data.forEach(room => {
+          if (room.status === 'Available') {
+            counts[room.type] = (counts[room.type] || 0) + 1;
+          } else if (!counts[room.type]) {
+            counts[room.type] = 0;
+          }
+        });
+        setRoomAvailability(counts);
+      }
+    };
+
     // Fetch member preferences
     const fetchPrefs = async () => {
       const { data, error } = await supabase
@@ -61,12 +81,20 @@ export default function MemberPortal({ member }: MemberPortalProps) {
     fetchServices();
     fetchRules();
     fetchPrefs();
+    fetchAvailability();
 
-    // Subscribe to realtime changes for services
+    // Subscribe to realtime changes for everything
     const servicesChannel = supabase
       .channel('services-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'services' }, () => {
         fetchServices();
+      })
+      .subscribe();
+
+    const roomsChannel = supabase
+      .channel('rooms-availability')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, () => {
+        fetchAvailability();
       })
       .subscribe();
 
@@ -80,6 +108,7 @@ export default function MemberPortal({ member }: MemberPortalProps) {
     return () => {
       supabase.removeChannel(servicesChannel);
       supabase.removeChannel(rulesChannel);
+      supabase.removeChannel(roomsChannel);
     };
   }, [member.id]);
 
@@ -181,12 +210,13 @@ export default function MemberPortal({ member }: MemberPortalProps) {
                 referrerPolicy="no-referrer"
               />
               <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
-                <div className="bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-stone-900 shadow-sm">
+                <div className="bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-stone-900 shadow-sm flex items-center gap-1">
+                  <TrendingUp size={12} className="text-[#0066ff]" />
                   ETB {getDynamicPrice(service).toLocaleString()}
                 </div>
                 {getDynamicPrice(service) !== service.base_price && (
-                  <div className="bg-stone-900/80 backdrop-blur-md px-2 py-0.5 rounded-full text-[10px] font-bold text-white line-through opacity-60">
-                    ETB {service.base_price.toLocaleString()}
+                  <div className="bg-[#0066ff]/90 backdrop-blur-md px-2 py-0.5 rounded-full text-[10px] font-bold text-white shadow-lg animate-pulse">
+                    AI Adjusted
                   </div>
                 )}
               </div>
@@ -217,11 +247,22 @@ export default function MemberPortal({ member }: MemberPortalProps) {
                     {service.max_capacity}
                   </div>
                 </div>
+                {service.category_id === 'Rooms' && (
+                  <div className={clsx(
+                    "text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-tighter",
+                    (roomAvailability[service.name] || 0) > 0 
+                      ? "bg-green-100 text-green-600" 
+                      : "bg-red-100 text-red-600"
+                  )}>
+                    {roomAvailability[service.name] || 0} rooms available
+                  </div>
+                )}
                 <button 
                   onClick={() => setSelectedService(service)}
-                  className="bg-stone-50 text-stone-900 px-6 py-2 rounded-xl font-bold hover:bg-stone-900 hover:text-white transition-all"
+                  disabled={service.category_id === 'Rooms' && (roomAvailability[service.name] || 0) === 0}
+                  className="bg-stone-50 text-stone-900 px-6 py-2 rounded-xl font-bold hover:bg-stone-900 hover:text-white transition-all disabled:opacity-50 disabled:hover:bg-stone-50 disabled:hover:text-stone-900"
                 >
-                  Book Now
+                  {service.category_id === 'Rooms' && (roomAvailability[service.name] || 0) === 0 ? 'Sold Out' : 'Book Now'}
                 </button>
               </div>
             </div>

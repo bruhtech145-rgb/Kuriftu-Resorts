@@ -66,9 +66,25 @@ export default function BookingModal({ service, member, onClose }: BookingModalP
     setLoading(true);
     setError(null);
     try {
+      // 1. Find an available room of this type
+      const { data: availableRooms, error: roomFetchError } = await supabase
+        .from('rooms')
+        .select('id')
+        .eq('type', service.name)
+        .eq('status', 'Available')
+        .limit(1);
+
+      if (roomFetchError) throw roomFetchError;
+      if (!availableRooms || availableRooms.length === 0) {
+        throw new Error('Sorry, no rooms of this type are available for these dates.');
+      }
+
+      const roomId = availableRooms[0].id;
+
       const bookingData = {
         member_id: member.id,
         service_id: service.id,
+        room_id: roomId, // Storing the room_id for reference
         start_date: new Date(startDate).toISOString(),
         end_date: isRoom ? new Date(endDate).toISOString() : new Date(startDate).toISOString(),
         guest_count: guestCount,
@@ -86,6 +102,17 @@ export default function BookingModal({ service, member, onClose }: BookingModalP
         .insert(bookingData);
 
       if (insertError) throw insertError;
+
+      // 2. Mark the room as booked
+      const { error: roomUpdateError } = await supabase
+        .from('rooms')
+        .update({ status: 'Booked' })
+        .eq('id', roomId);
+
+      if (roomUpdateError) {
+        console.error('Failed to update room status:', roomUpdateError);
+      }
+
       setStep(3);
     } catch (err) {
       console.error('Booking error:', err);

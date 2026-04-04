@@ -1,16 +1,15 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Mail, Lock, LogIn, AlertCircle, Loader2, Chrome } from 'lucide-react';
+import { X, Mail, Lock, LogIn, AlertCircle, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSwitchToRegister: () => void;
-  onGoogleLogin: () => void;
 }
 
-export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSwitchToRegister, onGoogleLogin }) => {
+export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSwitchToRegister }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -56,11 +55,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSwitc
     }
   };
 
-  const handleGoogleLogin = () => {
-    onClose();
-    onGoogleLogin();
-  };
-
   return (
     <AnimatePresence>
       {isOpen && (
@@ -93,21 +87,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onSwitc
                 </div>
                 <h2 className="text-3xl font-bold text-slate-900 mb-2 text-center">Welcome Back</h2>
                 <p className="text-slate-500 text-center">Sign in to access your member portal.</p>
-              </div>
-
-              {/* Google Login */}
-              <button
-                onClick={handleGoogleLogin}
-                className="w-full flex items-center justify-center gap-3 bg-white border-2 border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-700 py-4 rounded-2xl font-bold transition-all mb-6"
-              >
-                <Chrome size={20} />
-                Continue with Google
-              </button>
-
-              <div className="flex items-center gap-4 mb-6">
-                <div className="flex-1 h-px bg-slate-200" />
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">or</span>
-                <div className="flex-1 h-px bg-slate-200" />
               </div>
 
               <form onSubmit={handleLogin} className="space-y-6">

@@ -2,13 +2,14 @@ import { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Send, Sparkles, User, Bot, MapPin, Utensils, Heart, Calendar } from 'lucide-react';
 import { Member } from '../types';
+import { chatWithAI, ChatMessage, loadConversationHistory, getProactiveGreeting } from '../lib/ai-service';
 import { clsx } from 'clsx';
 
 interface ConciergePageProps {
   member: Member;
 }
 
-interface Message {
+interface UIMessage {
   id: string;
   text: string;
   sender: 'user' | 'bot';
@@ -16,53 +17,65 @@ interface Message {
 }
 
 const QUICK_ACTIONS = [
-  { label: 'Recommend activities', icon: MapPin },
-  { label: 'Best restaurants nearby', icon: Utensils },
-  { label: 'Spa availability', icon: Heart },
-  { label: 'Plan my day', icon: Calendar },
+  { label: 'What can I do here?', icon: MapPin },
+  { label: 'Book a dining experience', icon: Utensils },
+  { label: 'Spa & wellness options', icon: Heart },
+  { label: 'Show my bookings', icon: Calendar },
 ];
 
-// Simple response logic - in production this would connect to an AI API
-function generateResponse(input: string, memberName: string): string {
-  const lower = input.toLowerCase();
-
-  if (lower.includes('activity') || lower.includes('activities') || lower.includes('do')) {
-    return `Great choice, ${memberName}! Here are today's top activities:\n\n🏔 **Crater Lake Kayaking** - 10:00 AM & 2:00 PM (2 spots left)\n🏛 **Heritage Tour** - 11:00 AM (guided, includes coffee ceremony)\n🐦 **Bird Watching** - 6:30 AM early morning expedition\n\nWould you like me to book any of these for you?`;
-  }
-  if (lower.includes('restaurant') || lower.includes('food') || lower.includes('dining') || lower.includes('eat')) {
-    return `Here are our dining experiences for today:\n\n🍽 **Ethiopian Fine Dining** - 7:00 PM (reservations recommended)\n🥩 **Lakeside BBQ Night** - 6:30 PM with live music\n☕ **Traditional Coffee Ceremony** - 3:00 PM & 5:00 PM\n\nAll restaurants accommodate dietary preferences. Shall I make a reservation?`;
-  }
-  if (lower.includes('spa') || lower.includes('wellness') || lower.includes('massage') || lower.includes('relax')) {
-    return `Our wellness center has availability today:\n\n☕ **Coffee Body Scrub** - 11:00 AM, 2:00 PM, 4:00 PM\n♨️ **Hot Springs Session** - Open all day (60 min sessions)\n🧘 **Yoga & Meditation** - Tomorrow 7:00 AM by the lake\n\nThe Coffee Spa is our signature treatment - highly recommended! Want me to book a slot?`;
-  }
-  if (lower.includes('plan') || lower.includes('itinerary') || lower.includes('day')) {
-    return `Here's a perfect day at Kuriftu for you, ${memberName}:\n\n🌅 **7:00 AM** - Yoga by the crater lake\n🥐 **8:30 AM** - Breakfast at the Garden Restaurant\n🏔 **10:00 AM** - Crater Lake Kayaking\n🍽 **12:30 PM** - Lunch with lake view\n☕ **2:30 PM** - Coffee Spa Treatment\n🏛 **4:30 PM** - Heritage Tour\n🥩 **7:00 PM** - Lakeside BBQ with live music\n\nWant me to book this entire itinerary?`;
-  }
-  if (lower.includes('book') || lower.includes('reserve')) {
-    return `I'd be happy to help you book! Please head to the **Dashboard** tab where you can browse all available services and book directly. Or tell me what specific experience you're interested in, and I'll guide you!`;
-  }
-  if (lower.includes('hello') || lower.includes('hi') || lower.includes('hey')) {
-    return `Hello ${memberName}! Welcome to Kuriftu Resorts. I'm your AI concierge - I can help you discover activities, book restaurants, schedule spa treatments, or plan your entire day. What sounds good?`;
-  }
-  if (lower.includes('thank')) {
-    return `You're welcome, ${memberName}! Enjoy your stay at Kuriftu. I'm here 24/7 if you need anything else. 🌟`;
-  }
-
-  return `I'd love to help with that, ${memberName}! I can assist you with:\n\n• **Activities & Tours** - kayaking, bird watching, heritage tours\n• **Dining** - restaurant reservations, special dietary needs\n• **Wellness** - spa bookings, yoga sessions\n• **Day Planning** - full itinerary suggestions\n\nWhat would you like to explore?`;
-}
-
 export default function ConciergePage({ member }: ConciergePageProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      text: `Welcome back, ${member.full_name}! I'm your Kuriftu AI Concierge. How can I make your stay unforgettable today?`,
-      sender: 'bot',
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<UIMessage[]>([]);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const [isTyping, setIsTyping] = useState(true); // Start loading
+  const [initialized, setInitialized] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Load persistent history + proactive greeting on mount
+  useEffect(() => {
+    if (initialized) return;
+    setInitialized(true);
+
+    const init = async () => {
+      // 1. Load past conversations from DB
+      const history = await loadConversationHistory(member.id);
+      if (history.length > 0) {
+        setChatHistory(history);
+        // Show last few messages in UI
+        const recentMessages: UIMessage[] = history.slice(-10).map((m, i) => ({
+          id: `hist-${i}`,
+          text: m.content,
+          sender: m.role === 'user' ? 'user' as const : 'bot' as const,
+          timestamp: new Date(),
+        }));
+        setMessages(recentMessages);
+      }
+
+      // 2. Get personalized AI greeting (knows their prefs, new packages, history)
+      try {
+        const greeting = await getProactiveGreeting({
+          memberId: member.id,
+          memberName: member.full_name,
+        });
+        setMessages(prev => [...prev, {
+          id: 'greeting',
+          text: greeting,
+          sender: 'bot',
+          timestamp: new Date(),
+        }]);
+      } catch {
+        setMessages(prev => [...prev, {
+          id: 'greeting',
+          text: `Selam, ${member.full_name}! Welcome to Kuriftu. How can I help you today?`,
+          sender: 'bot',
+          timestamp: new Date(),
+        }]);
+      }
+      setIsTyping(false);
+    };
+
+    init();
+  }, [member.id]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -70,10 +83,10 @@ export default function ConciergePage({ member }: ConciergePageProps) {
     }
   }, [messages, isTyping]);
 
-  const sendMessage = (text: string) => {
-    if (!text.trim()) return;
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || isTyping) return;
 
-    const userMsg: Message = {
+    const userMsg: UIMessage = {
       id: Date.now().toString(),
       text,
       sender: 'user',
@@ -83,17 +96,35 @@ export default function ConciergePage({ member }: ConciergePageProps) {
     setInput('');
     setIsTyping(true);
 
-    setTimeout(() => {
-      const response = generateResponse(text, member.full_name.split(' ')[0]);
-      const botMsg: Message = {
+    const newHistory: ChatMessage[] = [...chatHistory, { role: 'user', content: text }];
+    setChatHistory(newHistory);
+
+    try {
+      const response = await chatWithAI(newHistory, {
+        memberId: member.id,
+        memberName: member.full_name,
+      });
+
+      const botMsg: UIMessage = {
         id: (Date.now() + 1).toString(),
         text: response,
         sender: 'bot',
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, botMsg]);
+      setChatHistory(prev => [...prev, { role: 'assistant', content: response }]);
+    } catch (error) {
+      console.error('AI error:', error);
+      const errorMsg: UIMessage = {
+        id: (Date.now() + 1).toString(),
+        text: "I'm having trouble connecting right now. Please try again in a moment.",
+        sender: 'bot',
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
       setIsTyping(false);
-    }, 800 + Math.random() * 700);
+    }
   };
 
   return (
@@ -107,7 +138,7 @@ export default function ConciergePage({ member }: ConciergePageProps) {
           <h1 className="text-2xl font-serif text-stone-900">AI Concierge</h1>
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 bg-green-500 rounded-full" />
-            <span className="text-xs text-stone-400 font-bold">Online 24/7</span>
+            <span className="text-xs text-stone-400 font-bold">Powered by Groq AI</span>
           </div>
         </div>
       </div>
@@ -178,11 +209,12 @@ export default function ConciergePage({ member }: ConciergePageProps) {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
           placeholder="Ask me anything about your stay..."
-          className="w-full pl-5 pr-14 py-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-all shadow-sm"
+          disabled={isTyping}
+          className="w-full pl-5 pr-14 py-4 bg-white border border-stone-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-300 transition-all shadow-sm disabled:opacity-60"
         />
         <button
           onClick={() => sendMessage(input)}
-          disabled={!input.trim()}
+          disabled={!input.trim() || isTyping}
           className="absolute right-2 top-1/2 -translate-y-1/2 p-2.5 bg-stone-900 text-white rounded-xl hover:bg-stone-800 transition-colors disabled:opacity-30"
         >
           <Send size={18} />

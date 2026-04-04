@@ -99,7 +99,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const [cronRunning, setCronRunning] = useState(false);
   const [showAIChat, setShowAIChat] = useState(false);
 
+  const [user, setUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [priceAdjustments, setPriceAdjustments] = useState<{[key: string]: number}>({});
+
   useEffect(() => {
+    fetchUserData();
     fetchDashboardData();
     fetchLiveStats();
     runAIAnalysis();
@@ -130,7 +135,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         ? Math.round((services || []).reduce((s, svc) => s + svc.base_price, 0) / (services || []).length)
         : 0;
 
-      // Occupancy: current stays
       const nowIso = today.toISOString();
       const currentStays = confirmed.filter(b => b.start_date <= nowIso && b.end_date >= startOfDay.toISOString());
       const occupancyRate = Math.min(100, Math.round((currentStays.length > 0 ? currentStays.length : confirmed.length) / 42 * 100));
@@ -148,8 +152,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         cancellationRate,
       });
 
-      // Build real trend data — revenue & booking count per day (last 14 days)
-      // Uses created_at (when booking was placed) not start_date
+      // Build real trend data (last 14 days)
       const { data: recentBookings } = await supabase
         .from('bookings')
         .select('final_price, status, created_at')
@@ -175,13 +178,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
       const realTrends = Object.entries(revenueByDay).map(([name, data]) => ({
         name,
         current: data.revenue,
-        suggested: data.count, // Show booking count as the second line
+        suggested: data.count,
       }));
-
-      // Always use real data — replace seed data
       setTrendData(realTrends);
     } catch (error) {
       console.error('Error fetching live stats:', error);
+    }
+  };
+
+  const fetchUserData = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      setUser(user);
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      if (profile) setUserProfile(profile);
     }
   };
 
@@ -226,17 +240,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const fetchDashboardData = async () => {
     setLoadingData(true);
     try {
-      const [trendsRes, approvalsRes, recsRes, resortsRes] = await Promise.all([
+      const [trendsRes, approvalsRes, recsRes, resortsRes, roomsRes, bookingsRes] = await Promise.all([
         supabase.from('price_trends').select('*').order('order_idx', { ascending: true }),
-        supabase.from('pricing_approvals').select('*').order('target_date', { ascending: true }),
+        supabase.from('pricing_approvals').select('*').eq('status', 'Pending').order('target_date', { ascending: true }),
         supabase.from('ai_recommendations').select('*'),
-        supabase.from('resort_approvals').select('*')
+        supabase.from('resort_approvals').select('*'),
+        supabase.from('rooms').select('*'),
+        supabase.from('bookings').select('final_price, status')
       ]);
 
       if (trendsRes.data) setTrendData(trendsRes.data.map(d => ({ name: d.date_name, current: d.current_price, suggested: d.suggested_price })));
       if (approvalsRes.data) setPricingApprovals(approvalsRes.data.map(d => ({ id: d.id, roomType: d.room_type, date: d.target_date, current: d.current_price, suggested: d.suggested_price, change: d.change_percent, status: d.status })));
       if (recsRes.data) setRecommendations(recsRes.data.map(d => ({ type: d.room_type, reason: d.reason, current: d.current_price, suggested: d.suggested_price, change: d.change_percent, confidence: d.confidence })));
       if (resortsRes.data) setResortApprovals(resortsRes.data.map(d => ({ id: d.id, resort: d.resort_name, occupancy: d.occupancy, currentRate: d.current_rate, suggestedRate: d.suggested_rate, change: d.change_percent, reason: d.reason, status: d.status })));
+      if (roomsRes.data) setRooms(roomsRes.data);
+      if (bookingsRes.data) setBookings(bookingsRes.data as any);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -297,7 +315,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     }
   };
 
-  const handleApprovePrice = async (roomId: string, suggestedPrice: number, roomType: string) => {
+  const handleApprovePrice = async (roomId: string | null, suggestedPrice: number, roomType: string, approvalId?: string) => {
     try {
       // 1. Update ALL rooms of the same type to maintain consistency
       const { error: roomError } = await supabase
@@ -320,7 +338,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         console.warn('Could not update service base_price:', serviceError);
       }
 
+      // 3. Mark approval as 'Approved' if called from approvals tab
+      if (approvalId) {
+        await supabase.from('pricing_approvals').update({ status: 'Approved' }).eq('id', approvalId);
+      }
+
       await fetchRooms();
+      await fetchDashboardData();
       alert(`AI Price Approved!\nAll rooms within '${roomType}' category have been updated to ETB ${suggestedPrice}.`);
     } catch (error) {
       console.error('Error approving price:', error);
@@ -444,7 +468,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     { label: 'Occupancy Rate', value: `${liveStats.occupancyRate}%`, change: `${liveStats.totalBookings} bookings`, icon: <Hotel size={24} />, color: 'bg-green-500' },
     { label: 'Members', value: `${liveStats.totalMembers}`, change: `${liveStats.cancellationRate}% cancel rate`, icon: <Users size={24} />, color: 'bg-purple-500' },
   ];
-
 
   const handleApproval = async (id: string, table: string, status: 'Approved' | 'Rejected') => {
     const { error } = await supabase.from(table).update({ status }).eq('id', id);
@@ -635,62 +658,69 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   );
 
   const renderPricingApprovals = () => (
-    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-      <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="p-3 sm:p-4 border-b border-slate-50 flex flex-col sm:flex-row items-center justify-between gap-3">
         <div>
-          <h3 className="text-xl font-bold text-slate-900">Pricing Approvals</h3>
-          <p className="text-sm text-slate-400">5 pending approvals</p>
+          <h3 className="text-base font-bold text-slate-900 leading-tight">Pricing Approvals</h3>
+          <p className="text-[10px] text-slate-400 mt-0.5">{pricingApprovals.filter(a => a.status === 'Pending').length} pending suggestions</p>
         </div>
+        <button
+          onClick={handleBulkApprove}
+          className="w-full sm:w-auto px-4 py-1.5 bg-green-500 text-white rounded-lg text-xs font-bold hover:bg-green-600 transition-all shadow-sm"
+        >
+          Approve All
+        </button>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50/50">
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Room Type</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Date</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Current Price</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Suggested Price</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Adjusted Price</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Change</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Status</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
+        <table className="w-full text-left border-collapse min-w-[850px]">
+          <thead className="bg-slate-50/10">
+            <tr>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">Room Type</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">Date</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">Current</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">AI Suggest</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">Adjusted</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">Change</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100">Status</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {loadingData ? (
               <tr>
-                <td colSpan={8} className="px-8 py-12 text-center text-slate-400">
-                  <div className="flex justify-center items-center gap-3">
-                    <RefreshCw size={24} className="animate-spin text-[#0066ff]" />
-                    Loading approvals...
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                  <div className="flex justify-center items-center gap-2 text-xs font-bold">
+                    <RefreshCw size={14} className="animate-spin text-[#0066ff]" />
+                    Syncing approvals...
                   </div>
                 </td>
               </tr>
             ) : pricingApprovals.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-8 py-12 text-center text-slate-500 font-bold">No pricing approvals pending</td>
+                <td colSpan={8} className="px-4 py-8 text-center text-slate-500 font-bold text-xs uppercase tracking-wider">No pending reviews</td>
               </tr>
             ) : (
               pricingApprovals.map((approval) => (
-                <tr key={approval.id} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="px-8 py-6 font-bold text-slate-900">{approval.roomType}</td>
-                  <td className="px-8 py-6 text-slate-500 font-medium">{approval.date}</td>
-                  <td className="px-8 py-6 font-bold text-slate-400">${approval.current}</td>
-                  <td className="px-8 py-6 font-bold text-slate-900">${approval.suggested}</td>
-                  <td className="px-8 py-6">
+                <tr key={approval.id} className="hover:bg-slate-50/30 transition-colors group">
+                  <td className="px-3 py-2.5 font-bold text-slate-900 text-xs truncate max-w-[150px]">{approval.roomType}</td>
+                  <td className="px-3 py-2.5 text-slate-500 font-medium text-xs whitespace-nowrap">{approval.date}</td>
+                  <td className="px-3 py-2.5 font-bold text-slate-400 text-xs">${approval.current}</td>
+                  <td className="px-3 py-2.5 font-bold text-slate-900 text-xs">${approval.suggested}</td>
+                  <td className="px-3 py-2.5">
                     <input 
-                      type="text" 
-                      defaultValue={approval.suggested} 
-                      className="w-20 px-3 py-1 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-900 focus:outline-none focus:border-[#0066ff]"
+                      type="number" 
+                      value={priceAdjustments[approval.id] !== undefined ? priceAdjustments[approval.id] : approval.suggested} 
+                      onChange={(e) => setPriceAdjustments(prev => ({ ...prev, [approval.id]: Number(e.target.value) }))}
+                      className="w-16 px-1.5 py-0.5 bg-slate-50 border border-slate-200 rounded text-xs font-bold text-slate-900 focus:ring-1 focus:ring-blue-500 focus:outline-none"
                     />
                   </td>
-                  <td className="px-8 py-6">
-                    <span className={`font-bold ${approval.change.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>
+                  <td className="px-3 py-2.5">
+                    <span className={`font-bold text-xs ${approval.change.startsWith('+') ? 'text-green-500' : 'text-red-500'}`}>
                       {approval.change}
                     </span>
                   </td>
-                  <td className="px-8 py-6">
-                    <span className="px-3 py-1 bg-amber-100 text-amber-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                  <td className="px-3 py-2.5">
+                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-600 rounded text-[8px] font-bold uppercase tracking-wider">
                       {approval.status}
                     </span>
                   </td>
@@ -768,6 +798,79 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     }
   };
 
+  const handleBulkApprove = async () => {
+    try {
+      const { error } = await supabase
+        .from('pricing_approvals')
+        .update({ status: 'Approved' })
+        .eq('status', 'Pending');
+      
+      if (error) throw error;
+      
+      alert('All pending price suggestions have been approved and are now active for member bookings!');
+      fetchDashboardData();
+    } catch (err) {
+      console.error('Bulk approval error:', err);
+      alert('Failed to approve all suggestions.');
+    }
+  };
+
+  const handleBulkGenerateForecasts = async () => {
+    setIsCalendarPredicting(true);
+    try {
+      // 1. Get unique room types
+      const uniqueTypes = [...new Set(rooms.map(r => r.type))];
+      if (uniqueTypes.length === 0) {
+        // Fallback to services if rooms table is empty for some reason
+        const { data: services } = await supabase.from('services').select('name');
+        if (services) uniqueTypes.push(...services.map(s => s.name));
+      }
+
+      const daysToGenerate = calendarTimeframe === 'month' ? 30 : 7;
+      const start = new Date(calendarStartDate);
+      const forecasts = [];
+
+      for (const type of uniqueTypes) {
+        // Find current base price for this type
+        const baseRoom = rooms.find(r => r.type === type);
+        const basePrice = baseRoom?.price || 200;
+
+        for (let i = 0; i < daysToGenerate; i++) {
+          const currentDate = addDays(start, i);
+          const dayOfWeek = currentDate.getDay();
+          const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+          
+          let suggested = basePrice;
+          if (isWeekend) suggested = Math.round(basePrice * 1.25);
+          if (Math.random() > 0.8) suggested = Math.round(suggested * 1.15); // Random surge
+
+          const changePercent = `${(((suggested - basePrice) / basePrice) * 100).toFixed(1)}%`;
+
+          forecasts.push({
+            room_type: type,
+            target_date: format(currentDate, 'MMM d, yyyy'),
+            current_price: basePrice,
+            suggested_price: suggested,
+            change_percent: changePercent.startsWith('-') ? changePercent : `+${changePercent}`,
+            status: 'Pending'
+          });
+        }
+      }
+
+      // 2. Insert into pricing_approvals
+      const { error } = await supabase.from('pricing_approvals').insert(forecasts);
+      if (error) throw error;
+
+      alert(`Successfully generated ${forecasts.length} AI price forecasts across ${uniqueTypes.length} room categories!`);
+      fetchDashboardData(); // Refresh approvals tab
+    } catch (err) {
+      console.error('Bulk forecast error:', err);
+      alert('Failed to generate bulk forecasts.');
+    } finally {
+      setIsCalendarPredicting(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'pricing-calendar' && calendarDaysData.length === 0) {
       handleGenerateCalendarPrediction();
@@ -801,23 +904,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         </div>
       </div>
 
-      <div className="mb-8 flex flex-col sm:flex-row items-center gap-4 justify-between bg-slate-50 p-4 rounded-3xl border border-slate-100">
-        <div className="flex items-center gap-4 w-full sm:w-auto">
+      <div className="mb-8 flex flex-col lg:flex-row items-center gap-4 justify-between bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+        <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
           <input 
             type="date"
             value={calendarStartDate}
             onChange={(e) => setCalendarStartDate(e.target.value)}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 text-sm font-bold text-slate-900"
+            className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 text-sm font-bold text-slate-900"
           />
           <select 
             value={calendarTimeframe}
             onChange={(e) => setCalendarTimeframe(e.target.value as 'week' | 'month')}
-            className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 text-sm font-bold text-slate-900 appearance-none pr-10"
-            style={{ backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', backgroundSize: '1em' }}
+            className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 text-sm font-bold text-slate-900"
           >
             <option value="week">1-Week Forecast</option>
             <option value="month">1-Month Forecast</option>
           </select>
+          <button
+            onClick={handleBulkGenerateForecasts}
+            disabled={isCalendarPredicting}
+            className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-2xl text-sm font-bold hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-900/10 disabled:opacity-50"
+          >
+            <SparklesIcon size={18} className={isCalendarPredicting ? 'animate-spin' : ''} />
+            {isCalendarPredicting ? 'Calculating...' : 'Bulk Forecast All Room Types'}
+          </button>
         </div>
         <button 
           onClick={handleGenerateCalendarPrediction}
@@ -835,12 +945,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             <p className="text-slate-500 font-bold">Running Dynamic Prophet Model...</p>
          </div>
       ) : (
-        <div className="grid grid-cols-7 gap-px bg-slate-100 border border-slate-100 rounded-3xl overflow-hidden">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-            <div key={day} className="bg-white p-4 text-center text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50">
-              {day}
-            </div>
-          ))}
+        <div className="overflow-x-auto rounded-3xl border border-slate-100 shadow-xl bg-white">
+          <div className="min-w-[800px] grid grid-cols-7 gap-px bg-slate-100">
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+              <div key={day} className="bg-white p-4 text-center text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-50">
+                {day}
+              </div>
+            ))}
           
           {/* Fill beginning empty cells */}
           {calendarDaysData.length > 0 && Array.from({ length: new Date(calendarDaysData[0].date).getDay() }).map((_, i) => (
@@ -872,71 +983,52 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                <div key={`empty-end-${i}`} className="bg-slate-50/30 p-6 min-h-[120px]" />
              ));
           })()}
+          </div>
         </div>
       )}
     </div>
   );
 
   const renderResortsApprovals = () => (
-    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-      <div className="p-8 border-b border-slate-50 flex items-center justify-between">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="p-3 sm:p-4 border-b border-slate-50 flex items-center justify-between">
         <div>
-          <h3 className="text-xl font-bold text-slate-900">Resort Rate Approvals</h3>
-          <p className="text-sm text-slate-400">AI-driven adjustments based on occupancy and time</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-[10px] font-bold uppercase tracking-wider">
-            4 Pending
-          </span>
+          <h3 className="text-sm font-bold text-slate-900">Resort Rate Approvals</h3>
+          <p className="text-[10px] text-slate-400 mt-0.5">AI adjustments based on live occupancy</p>
         </div>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50/50">
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Resort Name</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Occupancy</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Current Rate</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">AI Suggested</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Change</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Reason</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
+        <table className="w-full text-left border-collapse min-w-[700px]">
+          <thead className="bg-slate-50/50">
+            <tr>
+              <th className="px-4 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Resort</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Occupancy</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Current Rate</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">AI Suggested</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Change</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {loadingData ? (
-              <tr>
-                <td colSpan={7} className="px-8 py-12 text-center text-slate-400">
-                  <div className="flex justify-center items-center gap-3">
-                    <RefreshCw size={24} className="animate-spin text-[#0066ff]" />
-                    Loading resort approvals...
-                  </div>
-                </td>
-              </tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-xs font-bold text-slate-400">Loading...</td></tr>
             ) : resortApprovals.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-8 py-12 text-center text-slate-500 font-bold">No resort approvals pending</td>
-              </tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-xs font-bold text-slate-500 uppercase">Synced</td></tr>
             ) : (
               resortApprovals.map((approval) => (
-                <tr key={approval.id} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="px-8 py-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center text-[#0066ff]">
-                        <Hotel size={18} />
-                      </div>
-                      <span className="font-bold text-slate-900">{approval.resort}</span>
+                <tr key={approval.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                       <Hotel size={14} className="text-[#0066ff]" />
+                       <span className="font-bold text-slate-900 text-xs">{approval.resort}</span>
                     </div>
                   </td>
-                  <td className="px-8 py-6">
+                  <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2">
-                      <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden">
-                        <div 
-                          className={`h-full ${parseInt(approval.occupancy) > 80 ? 'bg-orange-500' : 'bg-blue-500'}`} 
-                          style={{ width: approval.occupancy }} 
-                        />
+                      <div className="w-12 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full ${parseInt(approval.occupancy) > 80 ? 'bg-orange-500' : 'bg-blue-500'}`} style={{ width: approval.occupancy }} />
                       </div>
-                      <span className="text-sm font-bold text-slate-600">{approval.occupancy}</span>
+                      <span className="text-[10px] font-bold text-slate-600">{approval.occupancy}</span>
                     </div>
                   </td>
                   <td className="px-8 py-6 font-bold text-slate-400">{approval.currentRate}</td>
@@ -972,64 +1064,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   );
 
   const renderGuests = () => (
-    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-      <div className="p-8 border-b border-slate-50 flex items-center justify-between">
-        <div>
-          <h3 className="text-xl font-bold text-slate-900">Registered Guests</h3>
-          <p className="text-sm text-slate-400">Manage all registered users from Supabase</p>
-        </div>
-        <button
-          onClick={fetchGuests}
-          disabled={loadingGuests}
-          className="text-[#0066ff] hover:bg-blue-50 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw size={16} className={loadingGuests ? 'animate-spin' : ''} />
-          Refresh
-        </button>
+    <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+      <div className="p-3 sm:p-4 border-b border-slate-50 flex items-center justify-between">
+        <h3 className="text-sm font-bold text-slate-900">Registered Guests</h3>
+        <button onClick={fetchGuests} className="text-[#0066ff] hover:bg-blue-50 p-1.5 rounded-lg transition-colors"><RefreshCw size={14} className={loadingGuests ? 'animate-spin' : ''} /></button>
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50/50">
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Name</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Email</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Phone</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Joined</th>
+        <table className="w-full text-left border-collapse min-w-[700px]">
+          <thead className="bg-slate-50/50">
+            <tr>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Name</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Email</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Phone</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Joined</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {loadingGuests ? (
-              <tr>
-                <td colSpan={4} className="px-8 py-12 text-center text-slate-400 font-bold">
-                  <div className="flex justify-center items-center gap-3">
-                    <RefreshCw size={24} className="animate-spin text-[#0066ff]" />
-                    Loading guests from Supabase...
-                  </div>
-                </td>
-              </tr>
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-xs font-bold">Loading...</td></tr>
             ) : guests.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-8 py-12 text-center">
-                  <p className="text-slate-900 font-bold text-lg mb-2">No guests found</p>
-                  <p className="text-slate-500 text-sm">Make sure the `profiles` table and trigger are set up in your Supabase project.</p>
-                </td>
-              </tr>
+              <tr><td colSpan={4} className="px-4 py-8 text-center text-xs font-bold text-slate-500">No guests found</td></tr>
             ) : (
               guests.map((guest) => (
-                <tr key={guest.id} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="px-8 py-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-blue-100 text-[#0066ff] rounded-full flex items-center justify-center font-bold">
-                        {guest.full_name?.charAt(0) || <UserCircle size={20} />}
-                      </div>
-                      <span className="font-bold text-slate-900">{guest.full_name || 'N/A'}</span>
-                    </div>
-                  </td>
-                  <td className="px-8 py-6 text-slate-500 font-medium">{guest.email || 'N/A'}</td>
-                  <td className="px-8 py-6 text-slate-500">{guest.phone || 'N/A'}</td>
-                  <td className="px-8 py-6 text-slate-500 text-sm">
-                    {new Date(guest.created_at).toLocaleDateString()}
-                  </td>
+                <tr key={guest.id} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-3 py-2.5 font-bold text-slate-900 text-xs">{guest.full_name}</td>
+                  <td className="px-3 py-2.5 text-slate-500 text-xs">{guest.email}</td>
+                  <td className="px-3 py-2.5 text-slate-500 text-xs">{guest.phone || '-'}</td>
+                  <td className="px-3 py-2.5 text-slate-400 text-xs">{new Date(guest.created_at).toLocaleDateString()}</td>
                 </tr>
               ))
             )}
@@ -1042,185 +1103,104 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const handleRunAIPrediction = async () => {
     setIsPredicting(true);
     try {
-      // Simulate calling ai-models/dynamic-price-predictor.py
       await new Promise(resolve => setTimeout(resolve, 1500));
-      
       const updates = rooms.map(room => {
         const demandMultiplier = 1.0 + Math.random() * 0.2; 
         const holidayMultiplier = Math.random() > 0.8 ? 1.2 : 1.0; 
         const suggested = Math.round(room.price * demandMultiplier * holidayMultiplier);
-        return {
-          id: room.id,
-          suggested_price: suggested
-        };
+        return { id: room.id, suggested_price: suggested };
       });
-
-      // Sequential update to Supabase (in a real app, do an RPC or bulk update)
       for (const update of updates) {
-        await supabase
-          .from('rooms')
-          .update({ suggested_price: update.suggested_price })
-          .eq('id', update.id);
+        await supabase.from('rooms').update({ suggested_price: update.suggested_price }).eq('id', update.id);
       }
-
       await fetchRooms();
-      alert('AI Price Prediction Complete!\nSuggested prices have been populated.');
+      alert('AI Price Prediction Complete!');
     } catch (error) {
       console.error('Error running AI prediction:', error);
-      alert('Failed to run AI prediction.');
     } finally {
       setIsPredicting(false);
     }
   };
 
   const renderRooms = () => (
-    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-      <div className="p-8 border-b border-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden text-xs">
+      <div className="p-3 sm:p-4 border-b border-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h3 className="text-xl font-bold text-slate-900">Rooms Management</h3>
-          <p className="text-sm text-slate-400">Manage all rooms and suites</p>
+          <h3 className="font-bold text-slate-900">Room Management</h3>
+          <p className="text-[10px] text-slate-400">Manage all rooms and suites</p>
         </div>
-        <div className="flex flex-wrap flex-col sm:flex-row gap-2">
+        <div className="flex gap-2">
           <button
             onClick={handleRunAIPrediction}
-            disabled={isPredicting || loadingRooms || rooms.length === 0}
-            className="text-amber-600 bg-amber-50 hover:bg-amber-100 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
+            disabled={isPredicting || loadingRooms}
+            className="text-amber-600 bg-amber-50 hover:bg-amber-100 px-3 py-1 rounded-lg font-bold flex items-center gap-1.5 disabled:opacity-50"
           >
-            <Zap size={16} className={isPredicting ? 'animate-pulse' : ''} />
-            {isPredicting ? 'Predicting...' : 'Predict AI Prices'}
+            <Zap size={12} className={isPredicting ? 'animate-pulse' : ''} />
+            AI Predict
           </button>
           <button
-            onClick={fetchRooms}
-            disabled={loadingRooms}
-            className="text-[#0066ff] bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors disabled:opacity-50"
+            onClick={() => { setEditingRoom(null); setRoomFormData({ status: 'Available', capacity: 2 }); setShowRoomForm(true); }}
+            className="bg-[#0066ff] text-white px-3 py-1 rounded-lg font-bold flex items-center gap-1.5"
           >
-            <RefreshCw size={16} className={loadingRooms ? 'animate-spin' : ''} />
-            Refresh
-          </button>
-          <button
-            onClick={() => {
-              setEditingRoom(null);
-              setRoomFormData({ status: 'Available', capacity: 2 });
-              setShowRoomForm(true);
-            }}
-            className="bg-[#0066ff] hover:bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors"
-          >
-            <Plus size={16} />
-            Add Room
+            <Plus size={12} /> Add
           </button>
         </div>
       </div>
 
       {showRoomForm && (
-        <div className="p-8 bg-slate-50 border-b border-slate-100">
-          <h4 className="font-bold text-slate-900 mb-4">{editingRoom ? 'Edit Room' : 'Add New Room'}</h4>
-          <form onSubmit={handleSaveRoom} className="space-y-4 max-w-2xl">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Room Name</label>
-                <input required type="text" value={roomFormData.name || ''} onChange={e => setRoomFormData({ ...roomFormData, name: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff]" placeholder="e.g. Ocean View Suite 101" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Room Type</label>
-                <select required value={roomFormData.type || ''} onChange={e => setRoomFormData({ ...roomFormData, type: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff] bg-white">
-                  <option value="" disabled>Select a room type</option>
-                  <optgroup label="Bishoftu (Debre Zeyit)">
-                    <option value="Royal Presidential Suite">Royal Presidential Suite</option>
-                    <option value="Lake Side">Lake Side</option>
-                    <option value="Splash View Suite">Splash View Suite</option>
-                    <option value="Gateway Retreat">Gateway Retreat</option>
-                    <option value="Standard Twin">Standard Twin</option>
-                    <option value="Standard King">Standard King</option>
-                    <option value="Family Room">Family Room</option>
-                  </optgroup>
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Price / Night ($)</label>
-                <input required type="number" min="0" value={roomFormData.price || ''} onChange={e => setRoomFormData({ ...roomFormData, price: parseFloat(e.target.value) })} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff]" placeholder="450" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Capacity</label>
-                <input required type="number" min="1" value={roomFormData.capacity || ''} onChange={e => setRoomFormData({ ...roomFormData, capacity: parseInt(e.target.value) })} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff]" placeholder="2" />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Status</label>
-                <select required value={roomFormData.status || 'Available'} onChange={e => setRoomFormData({ ...roomFormData, status: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff] bg-white">
-                  <option value="Available">Available</option>
-                  <option value="Booked">Booked</option>
-                  <option value="Maintenance">Maintenance</option>
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Description</label>
-                <textarea value={roomFormData.description || ''} onChange={e => setRoomFormData({ ...roomFormData, description: e.target.value })} className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:outline-none focus:border-[#0066ff]" rows={3}></textarea>
-              </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button type="button" onClick={() => setShowRoomForm(false)} className="px-4 py-2 font-bold text-slate-500 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
-              <button type="submit" className="px-4 py-2 font-bold text-white bg-[#0066ff] hover:bg-blue-600 rounded-xl transition-colors">Save Room</button>
+        <div className="p-4 bg-slate-50 border-b border-slate-100 animate-in fade-in slide-in-from-top-2">
+          <h4 className="font-bold text-slate-900 mb-3">{editingRoom ? 'Edit Room' : 'Add New Room'}</h4>
+          <form onSubmit={handleSaveRoom} className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <input required type="text" value={roomFormData.name || ''} onChange={e => setRoomFormData({ ...roomFormData, name: e.target.value })} className="px-3 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:border-[#0066ff]" placeholder="Room Name" />
+            <select required value={roomFormData.type || ''} onChange={e => setRoomFormData({ ...roomFormData, type: e.target.value })} className="px-3 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:border-[#0066ff] bg-white">
+              <option value="" disabled>Select Type</option>
+              <option value="Royal Presidential Suite">Royal Presidential Suite</option>
+              <option value="Lake Side">Lake Side</option>
+              <option value="Splash View Suite">Splash View Suite</option>
+              <option value="Standard Twin">Standard Twin</option>
+              <option value="Standard King">Standard King</option>
+            </select>
+            <input required type="number" value={roomFormData.price || ''} onChange={e => setRoomFormData({ ...roomFormData, price: parseFloat(e.target.value) })} className="px-3 py-1.5 rounded-lg border border-slate-200 focus:outline-none focus:border-[#0066ff]" placeholder="Price" />
+            <div className="flex justify-end gap-2 md:col-span-3 pt-2">
+              <button type="button" onClick={() => setShowRoomForm(false)} className="px-3 py-1.5 font-bold text-slate-500 hover:bg-slate-200 rounded-lg">Cancel</button>
+              <button type="submit" className="px-3 py-1.5 font-bold text-white bg-[#0066ff] hover:bg-blue-600 rounded-lg">Save</button>
             </div>
           </form>
         </div>
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50/50">
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Name</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Type</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Price</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Suggested</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Cap.</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Status</th>
-              <th className="px-8 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
+        <table className="w-full text-left border-collapse min-w-[750px]">
+          <thead className="bg-slate-50/50">
+            <tr>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Name</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Type</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Price</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Suggested</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
+              <th className="px-3 py-2 text-[9px] font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
             {loadingRooms ? (
-              <tr>
-                <td colSpan={7} className="px-8 py-12 text-center text-slate-400 font-bold">
-                  <RefreshCw size={24} className="animate-spin text-[#0066ff] mx-auto mb-2" /> Loading rooms...
+              <tr><td colSpan={6} className="px-4 py-8 text-center font-bold">Loading...</td></tr>
+            ) : rooms.map((room) => (
+              <tr key={room.id} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-3 py-2 font-bold text-slate-900">{room.name}</td>
+                <td className="px-3 py-2 text-slate-500">{room.type}</td>
+                <td className="px-3 py-2 font-bold text-slate-900">${room.price}</td>
+                <td className="px-3 py-2 text-amber-600 font-bold">{room.suggested_price ? `$${room.suggested_price}` : '-'}</td>
+                <td className="px-3 py-2">
+                  <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-wider ${room.status === 'Available' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>{room.status}</span>
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <div className="flex justify-end gap-1">
+                    <button onClick={() => { setEditingRoom(room); setRoomFormData(room); setShowRoomForm(true); }} className="p-1 text-blue-500 hover:bg-blue-50 rounded-lg"><Edit2 size={12} /></button>
+                    <button onClick={() => handleDeleteRoom(room.id)} className="p-1 text-red-500 hover:bg-red-50 rounded-lg"><Trash2 size={12} /></button>
+                  </div>
                 </td>
               </tr>
-            ) : rooms.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-8 py-12 text-center text-slate-500">No rooms found.</td>
-              </tr>
-            ) : (
-              rooms.map((room) => (
-                <tr key={room.id} className="hover:bg-slate-50/50 transition-colors group">
-                  <td className="px-8 py-6 font-bold text-slate-900">{room.name}</td>
-                  <td className="px-8 py-6 text-slate-500">{room.type}</td>
-                  <td className="px-8 py-6 font-bold text-slate-900">${room.price}</td>
-                  <td className="px-8 py-6 text-amber-600 font-bold">{room.suggested_price ? `$${room.suggested_price}` : '-'}</td>
-                  <td className="px-8 py-6 text-slate-500">{room.capacity}</td>
-                  <td className="px-8 py-6">
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${room.status === 'Available' ? 'bg-green-100 text-green-600' :
-                        room.status === 'Booked' ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
-                      }`}>
-                      {room.status}
-                    </span>
-                  </td>
-                  <td className="px-8 py-6 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {room.suggested_price && (
-                        <button 
-                          onClick={() => handleApprovePrice(room.id, room.suggested_price!, room.type)}
-                          title="Approve AI Suggestion"
-                          className="p-2 text-green-500 hover:bg-green-50 rounded-xl transition-colors"
-                        >
-                          <CheckCircle2 size={16} />
-                        </button>
-                      )}
-                      <button onClick={() => { setEditingRoom(room); setRoomFormData(room); setShowRoomForm(true); }} className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-colors"><Edit2 size={16} /></button>
-                      <button onClick={() => handleDeleteRoom(room.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-xl transition-colors"><Trash2 size={16} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
+            ))}
           </tbody>
         </table>
       </div>
@@ -1228,15 +1208,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
+      {/* Mobile Header */}
+      <div className="lg:hidden bg-slate-900 text-white p-4 flex items-center justify-between sticky top-0 z-[60]">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-[#0066ff] rounded-lg flex items-center justify-center">
+            <span className="text-white font-bold text-lg">K</span>
+          </div>
+          <span className="text-xl font-bold tracking-tight">Admin</span>
+        </div>
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="p-2 hover:bg-slate-800 rounded-xl transition-colors"
+        >
+          {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      </div>
+
+      {/* Sidebar Backdrop for Mobile */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsSidebarOpen(false)}
+            className="lg:hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[50]"
+          />
+        )}
+      </AnimatePresence>
+
       {/* Sidebar */}
       <motion.aside
         initial={false}
-        animate={{ width: isSidebarOpen ? 280 : 80 }}
-        className="bg-slate-900 text-white fixed h-full z-50 overflow-hidden"
+        animate={{ 
+          width: isSidebarOpen ? 280 : (typeof window !== 'undefined' && window.innerWidth < 1024 ? 0 : 80),
+          x: (typeof window !== 'undefined' && window.innerWidth < 1024 && !isSidebarOpen) ? -280 : 0
+        }}
+        className={`bg-slate-900 text-white fixed lg:sticky top-0 h-screen z-[55] overflow-hidden transition-all duration-300 shadow-2xl lg:shadow-none`}
       >
-        <div className="p-6 flex items-center justify-between">
-          {isSidebarOpen && (
+        <div className="p-6 hidden lg:flex items-center justify-between">
+          {(isSidebarOpen || (typeof window !== 'undefined' && window.innerWidth < 1024)) && (
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-[#0066ff] rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-lg">K</span>
@@ -1267,14 +1279,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
           ].map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => {
+                setActiveTab(item.id);
+                if (window.innerWidth < 1024) setIsSidebarOpen(false);
+              }}
               className={`w-full flex items-center gap-4 p-4 rounded-2xl transition-all ${activeTab === item.id
                   ? 'bg-[#0066ff] text-white shadow-lg shadow-blue-500/20'
                   : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                 }`}
             >
               <div className="shrink-0">{item.icon}</div>
-              {isSidebarOpen && <span className="font-bold text-sm">{item.label}</span>}
+              {(isSidebarOpen || (typeof window !== 'undefined' && window.innerWidth < 1024)) && <span className="font-bold text-sm">{item.label}</span>}
             </button>
           ))}
         </nav>
@@ -1291,12 +1306,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
       </motion.aside>
 
       {/* Main Content */}
-      <main className={`flex-1 transition-all duration-300 ${isSidebarOpen ? 'ml-[280px]' : 'ml-[80px]'}`}>
+      <main className={`flex-1 w-full min-w-0 transition-all duration-300`}>
         {/* Header */}
-        <header className="bg-white border-b border-slate-100 p-6 sticky top-0 z-40">
-          <div className="max-w-7xl mx-auto flex items-center justify-between">
-            <div className="flex items-center gap-4 bg-slate-50 px-4 py-2 rounded-2xl w-96">
-              <Search size={20} className="text-slate-400" />
+        <header className="bg-white border-b border-slate-100 p-4 sm:p-6 sticky top-0 lg:top-0 z-40">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4 bg-slate-50 px-4 py-2 rounded-2xl w-full sm:w-96 shadow-inner">
+              <Search size={20} className="text-slate-400 shrink-0" />
               <input
                 type="text"
                 placeholder="Search pricing, bookings, or resorts..."
@@ -1305,21 +1320,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             </div>
 
             <div className="flex items-center gap-6">
-              <button
-                onClick={handleTriggerCron}
-                disabled={cronRunning}
-                className="flex items-center gap-2 px-4 py-2 bg-[#0066ff] text-white rounded-xl text-sm font-bold hover:bg-[#0052cc] transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20"
-              >
-                <SparklesIcon size={16} className={cronRunning ? 'animate-spin' : ''} />
-                {cronRunning ? 'Running...' : 'Run AI Agent'}
-              </button>
               <button className="relative p-2 text-slate-400 hover:text-[#0066ff] transition-colors">
                 <Bell size={24} />
               </button>
               <div className="flex items-center gap-3 pl-6 border-l border-slate-100">
                 <div className="text-right hidden sm:block">
-                  <p className="text-sm font-bold text-slate-900">Sarah Johnson</p>
-                  <p className="text-xs text-slate-400">Admin</p>
+                  <p className="text-sm font-bold text-slate-900">{userProfile?.full_name || user?.email || 'Admin'}</p>
+                  <p className="text-xs text-slate-400">{userProfile?.is_admin ? 'System Admin' : 'Admin'}</p>
                 </div>
                 <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400">
                   <UserCircle size={24} />
@@ -1330,7 +1337,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         </header>
 
         {/* Dashboard Content */}
-        <div className="p-8 max-w-7xl mx-auto space-y-8">
+        <div className="px-3 py-4 sm:px-6 w-full max-w-[1500px] mx-auto space-y-6">
           <AnimatePresence mode="wait">
             <motion.div
               key={activeTab}

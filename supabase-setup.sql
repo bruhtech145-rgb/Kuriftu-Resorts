@@ -95,9 +95,28 @@ ALTER TABLE public.resort_approvals ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.price_trends ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Enable read access for all" ON public.pricing_approvals FOR SELECT USING (true);
+CREATE POLICY "Enable admin write access for pricing_approvals" ON public.pricing_approvals
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.is_admin = true) OR auth.jwt()->>'email' IN ('admin@kuriftu.com', 'bruhtech145@gmail.com')
+  );
+
 CREATE POLICY "Enable read access for all" ON public.ai_recommendations FOR SELECT USING (true);
+CREATE POLICY "Enable admin write access for ai_recommendations" ON public.ai_recommendations
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.is_admin = true) OR auth.jwt()->>'email' IN ('admin@kuriftu.com', 'bruhtech145@gmail.com')
+  );
+
 CREATE POLICY "Enable read access for all" ON public.resort_approvals FOR SELECT USING (true);
+CREATE POLICY "Enable admin write access for resort_approvals" ON public.resort_approvals
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.is_admin = true) OR auth.jwt()->>'email' IN ('admin@kuriftu.com', 'bruhtech145@gmail.com')
+  );
+
 CREATE POLICY "Enable read access for all" ON public.price_trends FOR SELECT USING (true);
+CREATE POLICY "Enable admin write access for price_trends" ON public.price_trends
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM public.profiles WHERE profiles.id = auth.uid() AND profiles.is_admin = true) OR auth.jwt()->>'email' IN ('admin@kuriftu.com', 'bruhtech145@gmail.com')
+  );
 
 -- 3. Insert Seed Data to replace the hardcoded values
 

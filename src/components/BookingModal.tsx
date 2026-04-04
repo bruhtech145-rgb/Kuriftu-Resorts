@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Calendar, Users, CreditCard, CheckCircle2, AlertCircle, Clock, Moon, ChevronRight } from 'lucide-react';
+import { X, Calendar, Users, CreditCard, CheckCircle2, AlertCircle, Clock, Moon, ChevronRight, TrendingUp } from 'lucide-react';
 import { Service, Member, PricingRule } from '../types';
 import { supabase } from '../lib/supabase';
 import { format, addDays, differenceInDays } from 'date-fns';
@@ -22,6 +22,7 @@ export default function BookingModal({ service, member, onClose }: BookingModalP
   const [guestCount, setGuestCount] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [forecastPrice, setForecastPrice] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchRules = async () => {
@@ -37,6 +38,28 @@ export default function BookingModal({ service, member, onClose }: BookingModalP
     fetchRules();
   }, []);
 
+  useEffect(() => {
+    const fetchForecast = async () => {
+      if (!isRoom) return;
+      
+      const targetDate = format(new Date(startDate), 'MMM d, yyyy');
+      const { data, error } = await supabase
+        .from('pricing_approvals')
+        .select('suggested_price')
+        .eq('room_type', service.name)
+        .eq('target_date', targetDate)
+        .eq('status', 'Approved')
+        .maybeSingle();
+      
+      if (data) {
+        setForecastPrice(Number(data.suggested_price));
+      } else {
+        setForecastPrice(null);
+      }
+    };
+    fetchForecast();
+  }, [startDate, service.name, isRoom]);
+
   const nights = useMemo(() => {
     if (!isRoom) return 1;
     const start = new Date(startDate);
@@ -46,6 +69,8 @@ export default function BookingModal({ service, member, onClose }: BookingModalP
   }, [startDate, endDate, isRoom]);
 
   const dynamicPrice = useMemo(() => {
+    if (forecastPrice) return forecastPrice;
+
     const date = new Date(startDate);
     const context = {
       occupancy: 85, // Simulated
@@ -53,7 +78,7 @@ export default function BookingModal({ service, member, onClose }: BookingModalP
       isHoliday: false
     };
     return calculateDynamicPrice(service, pricingRules, context);
-  }, [service, pricingRules, startDate]);
+  }, [service, pricingRules, startDate, forecastPrice]);
 
   const totalAmount = useMemo(() => {
     if (isRoom) {
@@ -216,7 +241,10 @@ export default function BookingModal({ service, member, onClose }: BookingModalP
                   </div>
                   {dynamicPrice !== service.base_price && (
                     <div className="flex justify-between text-sm">
-                      <span className="text-stone-500">Dynamic Adjustment</span>
+                      <div className="flex items-center gap-1.5 text-stone-500">
+                        <span>{forecastPrice ? 'AI Forecasted Price' : 'Dynamic Adjustment'}</span>
+                        {forecastPrice && <TrendingUp size={12} className="text-blue-500" />}
+                      </div>
                       <span className={clsx(
                         "font-medium",
                         dynamicPrice > service.base_price ? "text-red-600" : "text-green-600"

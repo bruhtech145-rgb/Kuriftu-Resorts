@@ -456,7 +456,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               ) : (
                 bookings.map((booking) => (
                   <tr key={booking.id} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="px-8 py-6 font-mono text-xs text-slate-400">{booking.id.substring(0, 8)}...</td>
+                    <td className="px-8 py-6 font-mono text-xs text-slate-400">{(booking.id || '').substring(0, 8)}...</td>
                     <td className="px-8 py-6">
                       <div className="font-bold text-slate-900">{new Date(booking.start_date).toLocaleDateString()}</div>
                       <div className="text-xs text-slate-500">to {new Date(booking.end_date).toLocaleDateString()}</div>

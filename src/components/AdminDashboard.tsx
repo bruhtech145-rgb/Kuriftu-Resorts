@@ -29,7 +29,8 @@ import {
   DoorOpen,
   Plus,
   Edit2,
-  Trash2
+  Trash2,
+  Target
 } from 'lucide-react';
 import {
   LineChart,
@@ -90,6 +91,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const [user, setUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [priceAdjustments, setPriceAdjustments] = useState<{[key: string]: number}>({});
+  const [segmentedCustomers, setSegmentedCustomers] = useState<any[]>([]);
+  const [isAnalyzingMarketing, setIsAnalyzingMarketing] = useState(false);
 
   useEffect(() => {
     fetchUserData();
@@ -185,8 +188,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
       fetchRooms();
     } else if (activeTab === 'bookings') {
       fetchBookings();
+    } else if (activeTab === 'marketing') {
+      runMarketingAI();
     }
   }, [activeTab]);
+
+  const runMarketingAI = async () => {
+    setIsAnalyzingMarketing(true);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('average_spend', { ascending: false });
+
+      if (error) throw error;
+      
+      // Artificial delay to simulate AI processing
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const segmented = (data || []).map(profile => {
+        let category = 'Level 1 - Budget';
+        const spend = Number(profile.average_spend) || 0;
+        const points = Number(profile.points_balance) || 0;
+
+        if (spend > 350 || points > 7000) {
+          category = 'Level 3 - Premium';
+        } else if (spend > 150 || points > 2000) {
+          category = 'Level 2 - Standard';
+        }
+
+        return { ...profile, category };
+      });
+
+      setSegmentedCustomers(segmented);
+    } catch (error) {
+      console.error('Error running Marketing AI:', error);
+    } finally {
+      setIsAnalyzingMarketing(false);
+    }
+  };
 
   const fetchRooms = async () => {
     setLoadingRooms(true);
@@ -1034,6 +1074,82 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     </div>
   );
 
+  const renderMarketing = () => (
+    <div className="space-y-6">
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900">Customer Segmentation AI</h3>
+            <p className="text-sm text-slate-400">Targeted marketing insights based on spend and loyalty</p>
+          </div>
+          <button 
+            onClick={runMarketingAI}
+            disabled={isAnalyzingMarketing}
+            className="bg-[#0066ff] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-600 transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20"
+          >
+            <Zap size={16} className={isAnalyzingMarketing ? 'animate-pulse' : ''} />
+            {isAnalyzingMarketing ? 'Analyzing...' : 'Run Segmentation AI'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          {[
+            { label: 'Premium Tier', color: 'bg-purple-100 text-purple-600', count: segmentedCustomers.filter(c => c.category?.includes('Premium')).length },
+            { label: 'Standard Tier', color: 'bg-blue-100 text-blue-600', count: segmentedCustomers.filter(c => c.category?.includes('Standard')).length },
+            { label: 'Budget Tier', color: 'bg-slate-100 text-slate-600', count: segmentedCustomers.filter(c => c.category?.includes('Budget')).length },
+          ].map((stat, i) => (
+            <div key={i} className={`p-4 rounded-2xl border border-transparent hover:border-slate-100 transition-all ${stat.color.split(' ')[0]}`}>
+              <p className="text-xs font-bold uppercase tracking-widest opacity-70 mb-1">{stat.label}</p>
+              <h4 className="text-2xl font-bold">{stat.count} <span className="text-sm font-normal opacity-70">Guests</span></h4>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[700px]">
+              <thead>
+                <tr>
+                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Guest Name</th>
+                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Avg. Spend</th>
+                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Points</th>
+                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">AI Segment</th>
+                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {isAnalyzingMarketing ? (
+                  <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-400 font-bold"><RefreshCw size={24} className="animate-spin mx-auto mb-2" /> Running K-Means Clustering...</td></tr>
+                ) : segmentedCustomers.length === 0 ? (
+                  <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-400 font-bold">No data processed. Click Run Segmentation AI.</td></tr>
+                ) : (
+                  segmentedCustomers.map((customer) => (
+                    <tr key={customer.id} className="hover:bg-white transition-colors group">
+                      <td className="px-4 py-3 font-bold text-slate-900 text-xs">{customer.full_name}</td>
+                      <td className="px-4 py-3 text-slate-600 text-xs">ETB {Number(customer.average_spend || 0).toLocaleString()}</td>
+                      <td className="px-4 py-3 text-slate-600 text-xs">{Number(customer.points_balance || 0).toLocaleString()} pts</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
+                          customer.category?.includes('Premium') ? 'bg-purple-100 text-purple-600' :
+                          customer.category?.includes('Standard') ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'
+                        }`}>
+                          {customer.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button className="text-[10px] font-bold text-[#0066ff] hover:underline">Target Campaign</button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   const handleRunAIPrediction = async () => {
     setIsPredicting(true);
     try {
@@ -1207,6 +1323,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             { id: 'resorts', label: 'Resorts', icon: <Hotel size={20} /> },
             { id: 'rooms', label: 'Rooms', icon: <DoorOpen size={20} /> },
             { id: 'bookings', label: 'Bookings', icon: <Calendar size={20} /> },
+            { id: 'marketing', label: 'Marketing AI', icon: <Target size={20} /> },
             { id: 'guests', label: 'Guests', icon: <Users size={20} /> },
             { id: 'settings', label: 'Settings', icon: <Settings size={20} /> },
           ].map((item) => (
@@ -1293,6 +1410,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               {activeTab === 'resorts' && renderResortsApprovals()}
               {activeTab === 'rooms' && renderRooms()}
               {activeTab === 'bookings' && renderBookings()}
+              {activeTab === 'marketing' && renderMarketing()}
               {activeTab === 'guests' && renderGuests()}
               {['settings'].includes(activeTab) && (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-400">

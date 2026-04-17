@@ -189,11 +189,10 @@ export function AIInsightsPanel({ analysis, loading, onRefresh }: InsightsPanelP
                 <button 
                   onClick={async () => {
                     const { supabase } = await import('../lib/supabase');
-                    const today = new Date();
                     const testMembers = [
-                      { email: 'abinet@example.com', full_name: 'Abinet Tesfaye', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 15 * 86400000).toISOString() },
-                      { email: 'blen@example.com', full_name: 'Blen Kebede', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 2 * 86400000).toISOString() },
-                      { email: 'genet@example.com', full_name: 'Genet Wolde', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 5 * 86400000).toISOString() }
+                      { email: 'abinet@example.com', full_name: 'Abinet Tesfaye', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true },
+                      { email: 'blen@example.com', full_name: 'Blen Kebede', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true },
+                      { email: 'genet@example.com', full_name: 'Genet Wolde', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true }
                     ];
                     const { error } = await supabase.from('members').upsert(testMembers, { onConflict: 'email' });
                     if (error) {

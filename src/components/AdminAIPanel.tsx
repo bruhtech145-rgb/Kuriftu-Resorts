@@ -182,10 +182,26 @@ export function AIInsightsPanel({ analysis, loading, onRefresh }: InsightsPanelP
                 </ResponsiveContainer>
               </div>
             ) : (
-              <div className="h-[250px] flex flex-col items-center justify-center text-slate-400 gap-2 border-2 border-dashed border-slate-50 rounded-3xl">
+              <div className="h-[250px] flex flex-col items-center justify-center text-slate-400 gap-2 border-2 border-dashed border-slate-200 rounded-3xl bg-slate-50/50">
                 <Users size={32} className="opacity-20" />
-                <p className="text-sm">No member data available for segmentation</p>
-                <p className="text-[10px]">Ensure you have members with spend history in the database.</p>
+                <p className="text-sm font-bold">No member data for AI segmentation</p>
+                <p className="text-[10px] mb-4">You need members with spend history to run clustering.</p>
+                <button 
+                  onClick={async () => {
+                    const { supabase } = await import('../lib/supabase');
+                    const testMembers = [
+                      { full_name: 'Abinet Tesfaye', email: 'abinet@example.com', phone: '+251 911 111111', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true },
+                      { full_name: 'Blen Kebede', email: 'blen@example.com', phone: '+251 911 222222', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true },
+                      { full_name: 'Genet Wolde', email: 'genet@example.com', phone: '+251 911 666666', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true }
+                    ];
+                    const { error } = await supabase.from('members').upsert(testMembers, { onConflict: 'email' });
+                    if (error) alert('Permission Denied: Please use the SQL Editor to run seed_members.sql');
+                    else { alert('Demo data seeded!'); onRefresh(); }
+                  }}
+                  className="px-4 py-2 bg-[#0066ff] text-white rounded-xl text-[10px] font-bold hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20"
+                >
+                  Seed 3 Demo Members
+                </button>
               </div>
             )}
           </div>

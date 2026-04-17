@@ -39,6 +39,32 @@ export interface DashboardAnalysis {
   todayRevenue: number;
   upcomingEvents: { name: string; nameAmharic: string; type: string }[];
   demandForecast: string;
+  customerSegments?: { id: string; average_price: number; points_balance: number; category: string }[];
+}
+
+// ─── AI Model Integration ───
+
+async function runCustomerSegmentation(members: any[]) {
+  try {
+    const formattedMembers = members.map(m => ({
+      id: m.id,
+      average_price: m.average_spend || 0,
+      points_balance: m.points_balance || 0
+    }));
+
+    const response = await fetch('/api/segment-customers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ members: formattedMembers })
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.segmented_customers;
+  } catch (error) {
+    console.error('Segmentation error:', error);
+    return null;
+  }
 }
 
 // ─── Data Fetching ───
@@ -288,9 +314,16 @@ function analyzeLocally(data: Awaited<ReturnType<typeof fetchLiveData>>): {
 
 // ─── AI Summary (Groq) ───
 
-async function generateAISummary(analysis: ReturnType<typeof analyzeLocally>, seasonName: string, events: any[]): Promise<string> {
+async function generateAISummary(analysis: ReturnType<typeof analyzeLocally>, seasonName: string, events: any[], segments?: any[]): Promise<string> {
   if (!SUPABASE_URL) {
     return `📊 ${analysis.stats.totalBookings} active bookings | ${analysis.stats.occupancyRate}% occupancy | ETB ${analysis.stats.todayRevenue.toLocaleString()} today. ${analysis.alerts.length} alerts require attention.`;
+  }
+
+  let segmentInfo = '';
+  if (segments && segments.length > 0) {
+    const counts: Record<string, number> = {};
+    segments.forEach(s => counts[s.category] = (counts[s.category] || 0) + 1);
+    segmentInfo = `- Customer Segments: ${Object.entries(counts).map(([k, v]) => `${k}: ${v}`).join(', ')}`;
   }
 
   const prompt = `You are the AI operations manager for Kuriftu Resorts, Ethiopia. Generate a brief (3-4 sentences) executive briefing for the admin based on this data:
@@ -301,6 +334,7 @@ async function generateAISummary(analysis: ReturnType<typeof analyzeLocally>, se
 - Cancellation rate: ${analysis.stats.cancellationRate}%
 - Season: ${seasonName}
 - Ethiopian calendar: ${events.map(e => e.name).join(', ') || 'No special events'}
+${segmentInfo}
 - Alerts: ${analysis.alerts.map(a => a.title).join(', ') || 'None'}
 - Top insight: ${analysis.insights[0]?.suggestion || 'N/A'}
 
@@ -698,7 +732,8 @@ export async function dismissAlert(alertId: string) {
 export async function runAdminAnalysis(): Promise<DashboardAnalysis> {
   const data = await fetchLiveData();
   const analysis = analyzeLocally(data);
-  const summary = await generateAISummary(analysis, data.season.name, data.events);
+  const customerSegments = await runCustomerSegmentation(data.members);
+  const summary = await generateAISummary(analysis, data.season.name, data.events, customerSegments || []);
 
   // Merge local alerts with persisted cron alerts
   let persistedAlerts: AdminAlert[] = [];
@@ -722,5 +757,6 @@ export async function runAdminAnalysis(): Promise<DashboardAnalysis> {
     todayRevenue: analysis.stats.todayRevenue,
     upcomingEvents: data.upcomingEvents.map(e => ({ name: e.name, nameAmharic: e.nameAmharic, type: e.type })),
     demandForecast: `${data.demand.multiplier}x demand (${data.demand.reasons[0] || data.season.name})`,
+    customerSegments: customerSegments || undefined
   };
 }

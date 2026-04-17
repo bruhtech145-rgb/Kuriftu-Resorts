@@ -287,25 +287,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
 
       if (error) throw error;
       
-      // Artificial delay to simulate AI processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      const segmented = (data || []).map(profile => {
-        let category = 'Level 1 - Budget';
-        const spend = Number(profile.average_spend) || 0;
-        const points = Number(profile.points_balance) || 0;
-
-        if (spend > 350 || points > 7000) {
-          category = 'Level 3 - Premium';
-        } else if (spend > 150 || points > 2000) {
-          category = 'Level 2 - Standard';
-        }
-
-        // Update the segment in Supabase for persistence
-        supabase.from('members').update({ ai_segment: category }).eq('id', profile.id).then();
-
-        return { ...profile, category };
+      const response = await fetch('/api/segment-customers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ members: data || [] })
       });
+
+      if (!response.ok) {
+        throw new Error('API request failed');
+      }
+
+      const result = await response.json();
+      const segmented_customers = result.segmented_customers || [];
+      
+      const segmentMap = new Map();
+      const updates = segmented_customers.map((seg: any) => {
+        segmentMap.set(seg.id, seg.category);
+        return supabase.from('members').update({ ai_segment: seg.category }).eq('id', seg.id);
+      });
+      await Promise.all(updates);
+
+      const segmented = (data || []).map(profile => ({
+        ...profile,
+        category: segmentMap.get(profile.id) || 'Uncategorized'
+      }));
 
       setSegmentedCustomers(segmented);
     } catch (error) {

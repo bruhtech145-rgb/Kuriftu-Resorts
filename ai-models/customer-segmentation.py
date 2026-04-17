@@ -1,4 +1,5 @@
 import json
+import sys
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
@@ -30,7 +31,7 @@ class CustomerSegmentationEngine:
         """
         Trains the K-Means model on the data, assigns clusters, and maps them to human-readable categories.
         """
-        print("Training Customer Segmentation AI Model...")
+        # print("Training Customer Segmentation AI Model...", file=sys.stderr)
         
         # 1. Select the features for clustering
         features = df[['average_price', 'points_balance']]
@@ -58,42 +59,42 @@ class CustomerSegmentationEngine:
         
         # Apply the labels to a new 'category' column
         df['category'] = df['cluster'].map(category_mapping)
-        print("Model training and segmentation complete. ✅")
+        # print("Model training and segmentation complete. ✅", file=sys.stderr)
         
         # Format the output dataframe back into a clean JSON response
         output_data = df[['id', 'average_price', 'points_balance', 'category']].to_dict(orient='records')
         return json.dumps({"segmented_customers": output_data}, indent=4)
 
 # ==========================================
-# 🚀 HACKATHON DEMO / TESTING BLOCK
+# 🚀 EXECUTION / DEMO BLOCK
 # ==========================================
 if __name__ == "__main__":
-    # 1. Mock JSON Data (Simulating the 'members' table payload from your backend API)
-    mock_json_input = """
-    {
-        "members": [
-            {"id": "usr_001", "average_price": 45.0, "points_balance": 100},
-            {"id": "usr_002", "average_price": 250.0, "points_balance": 5000},
-            {"id": "usr_003", "average_price": 55.0, "points_balance": 150},
-            {"id": "usr_004", "average_price": 120.0, "points_balance": 1200},
-            {"id": "usr_005", "average_price": 300.0, "points_balance": 8000},
-            {"id": "usr_006", "average_price": 110.0, "points_balance": 900},
-            {"id": "usr_007", "average_price": 40.0, "points_balance": 50},
-            {"id": "usr_008", "average_price": 135.0, "points_balance": 1500},
-            {"id": "usr_009", "average_price": 280.0, "points_balance": 6500}
-        ]
-    }
-    """
+    if not sys.stdin.isatty():
+        # Read from stdin
+        input_data = sys.stdin.read()
+    else:
+        # Fallback to Mock JSON Data
+        input_data = """
+        {
+            "members": [
+                {"id": "usr_001", "average_price": 45.0, "points_balance": 100},
+                {"id": "usr_002", "average_price": 250.0, "points_balance": 5000},
+                {"id": "usr_003", "average_price": 55.0, "points_balance": 150},
+                {"id": "usr_004", "average_price": 120.0, "points_balance": 1200},
+                {"id": "usr_005", "average_price": 300.0, "points_balance": 8000},
+                {"id": "usr_006", "average_price": 110.0, "points_balance": 900},
+                {"id": "usr_007", "average_price": 40.0, "points_balance": 50},
+                {"id": "usr_008", "average_price": 135.0, "points_balance": 1500},
+                {"id": "usr_009", "average_price": 280.0, "points_balance": 6500}
+            ]
+        }
+        """
 
-    # 2. Initialize the Engine
     engine = CustomerSegmentationEngine(n_clusters=3)
-
-    # 3. Load Data
-    historical_df = engine.load_and_prep_data(mock_json_input)
-
-    # 4. Train the AI Model and get the JSON output
-    result_json = engine.perform_clustering(historical_df)
-    
-    # 5. Print results
-    print("\n📊 --- GUZO AI: CUSTOMER SEGMENTATION RESULTS ---")
-    print(result_json)
+    try:
+        historical_df = engine.load_and_prep_data(input_data)
+        result_json = engine.perform_clustering(historical_df)
+        print(result_json)
+    except Exception as e:
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)

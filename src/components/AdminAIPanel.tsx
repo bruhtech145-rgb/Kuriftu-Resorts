@@ -2,10 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Sparkles, AlertTriangle, Info, CheckCircle2, XCircle, Bell, Send, Bot, User,
-  TrendingUp, Users, Calendar, Hotel, Loader2, ChevronRight, X, Zap, Volume2
+  TrendingUp, Users, Calendar, Hotel, Loader2, ChevronRight, X, Zap, Volume2,
+  PieChart as PieChartIcon, BarChart3
 } from 'lucide-react';
 import { runAdminAnalysis, adminChat, loadAdminHistory, AdminAlert, AIInsight, DashboardAnalysis } from '../lib/admin-agent';
 import { clsx } from 'clsx';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 // ─── Notification Toast ───
 
@@ -91,6 +93,17 @@ export function AIInsightsPanel({ analysis, loading, onRefresh }: InsightsPanelP
     low: 'bg-green-100 text-green-700',
   };
 
+  // Process segmentation data for charts
+  const segmentationData = analysis?.customerSegments ? (() => {
+    const counts: Record<string, number> = {};
+    analysis.customerSegments.forEach(s => {
+      counts[s.category] = (counts[s.category] || 0) + 1;
+    });
+    return Object.entries(counts).map(([name, value]) => ({ name, value }));
+  })() : [];
+
+  const COLORS = ['#0066ff', '#00C49F', '#FFBB28', '#FF8042'];
+
   return (
     <div className="space-y-8">
       {/* AI Summary Card */}
@@ -144,6 +157,68 @@ export function AIInsightsPanel({ analysis, loading, onRefresh }: InsightsPanelP
           )}
         </div>
       </div>
+
+      {/* Market Segmentation */}
+      {analysis && analysis.customerSegments && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+            <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
+              <Users size={18} className="text-[#0066ff]" />
+              AI Customer Segmentation
+            </h3>
+            <div className="h-[250px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={segmentationData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                    cursor={{ fill: '#f8fafc' }}
+                  />
+                  <Bar dataKey="value" fill="#0066ff" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
+            <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
+              <PieChartIcon size={18} className="text-[#0066ff]" />
+              Distribution
+            </h3>
+            <div className="h-[200px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={segmentationData}
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {segmentationData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 space-y-2">
+              {segmentationData.map((s, i) => (
+                <div key={i} className="flex items-center justify-between text-[10px]">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                    <span className="text-slate-600 truncate max-w-[120px]">{s.name}</span>
+                  </div>
+                  <span className="font-bold text-slate-900 whitespace-nowrap">{s.value} guests</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Upcoming Events */}
       {analysis && analysis.upcomingEvents.length > 0 && (

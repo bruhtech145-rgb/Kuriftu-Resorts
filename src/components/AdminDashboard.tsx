@@ -1157,18 +1157,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const handleSeedTestData = async () => {
     setIsAnalyzingMarketing(true);
     try {
-      const today = new Date();
       const testMembers = [
-        { full_name: 'Abinet Tesfaye', email: 'abinet@example.com', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 15 * 86400000).toISOString() },
-        { full_name: 'Blen Kebede', email: 'blen@example.com', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 2 * 86400000).toISOString() },
-        { full_name: 'Dawit Girma', email: 'dawit@example.com', loyalty_tier: 'Explorer', points_balance: 400, average_spend: 250.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 45 * 86400000).toISOString() },
-        { full_name: 'Eleni Tadesse', email: 'eleni@example.com', loyalty_tier: 'Summit', points_balance: 3000, average_spend: 800.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 10 * 86400000).toISOString() },
-        { full_name: 'Fasil Alemu', email: 'fasil@example.com', loyalty_tier: 'Explorer', points_balance: 50, average_spend: 50.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 120 * 86400000).toISOString() },
-        { full_name: 'Genet Wolde', email: 'genet@example.com', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 5 * 86400000).toISOString() },
-        { full_name: 'Habtam Moges', email: 'habtam@example.com', loyalty_tier: 'Trekker', points_balance: 800, average_spend: 350.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 60 * 86400000).toISOString() },
-        { full_name: 'Ismael Idris', email: 'ismael@example.com', loyalty_tier: 'Summit', points_balance: 2000, average_spend: 600.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 20 * 86400000).toISOString() },
-        { full_name: 'Jemal Ahmed', email: 'jemal@example.com', loyalty_tier: 'Explorer', points_balance: 200, average_spend: 100.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 180 * 86400000).toISOString() },
-        { full_name: 'Kalkidan Bekele', email: 'kalkidan@example.com', loyalty_tier: 'Pinnacle', points_balance: 4500, average_spend: 950.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 8 * 86400000).toISOString() }
+        { full_name: 'Abinet Tesfaye', email: 'abinet@example.com', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true },
+        { full_name: 'Blen Kebede', email: 'blen@example.com', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true },
+        { full_name: 'Dawit Girma', email: 'dawit@example.com', loyalty_tier: 'Explorer', points_balance: 400, average_spend: 250.00, onboarding_completed: true },
+        { full_name: 'Eleni Tadesse', email: 'eleni@example.com', loyalty_tier: 'Summit', points_balance: 3000, average_spend: 800.00, onboarding_completed: true },
+        { full_name: 'Fasil Alemu', email: 'fasil@example.com', loyalty_tier: 'Explorer', points_balance: 50, average_spend: 50.00, onboarding_completed: true },
+        { full_name: 'Genet Wolde', email: 'genet@example.com', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true },
+        { full_name: 'Habtam Moges', email: 'habtam@example.com', loyalty_tier: 'Trekker', points_balance: 800, average_spend: 350.00, onboarding_completed: true },
+        { full_name: 'Ismael Idris', email: 'ismael@example.com', loyalty_tier: 'Summit', points_balance: 2000, average_spend: 600.00, onboarding_completed: true },
+        { full_name: 'Jemal Ahmed', email: 'jemal@example.com', loyalty_tier: 'Explorer', points_balance: 200, average_spend: 100.00, onboarding_completed: true },
+        { full_name: 'Kalkidan Bekele', email: 'kalkidan@example.com', loyalty_tier: 'Pinnacle', points_balance: 4500, average_spend: 950.00, onboarding_completed: true }
       ];
 
       const { error } = await supabase.from('members').upsert(testMembers, { onConflict: 'email' });

@@ -191,13 +191,15 @@ export function AIInsightsPanel({ analysis, loading, onRefresh }: InsightsPanelP
                     const { supabase } = await import('../lib/supabase');
                     const today = new Date();
                     const testMembers = [
-                      { full_name: 'Abinet Tesfaye', email: 'abinet@example.com', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 15 * 86400000).toISOString() },
-                      { full_name: 'Blen Kebede', email: 'blen@example.com', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 2 * 86400000).toISOString() },
-                      { full_name: 'Genet Wolde', email: 'genet@example.com', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 5 * 86400000).toISOString() }
+                      { email: 'abinet@example.com', full_name: 'Abinet Tesfaye', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 15 * 86400000).toISOString(), date: new Date(today.getTime() - 15 * 86400000).toISOString().split('T')[0] },
+                      { email: 'blen@example.com', full_name: 'Blen Kebede', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 2 * 86400000).toISOString(), date: new Date(today.getTime() - 2 * 86400000).toISOString().split('T')[0] },
+                      { email: 'genet@example.com', full_name: 'Genet Wolde', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 5 * 86400000).toISOString(), date: new Date(today.getTime() - 5 * 86400000).toISOString().split('T')[0] }
                     ];
                     const { error } = await supabase.from('members').upsert(testMembers, { onConflict: 'email' });
-                    if (error) alert('Permission Denied: Please use the SQL Editor to run seed_members.sql');
-                    else { alert('Demo data seeded!'); onRefresh(); }
+                    if (error) {
+                      console.error('Seed Error:', error);
+                      alert(`Permission Denied or Schema Mismatch: ${error.message}`);
+                    } else { alert('Demo data seeded!'); onRefresh(); }
                   }}
                   className="px-4 py-2 bg-[#0066ff] text-white rounded-xl text-[10px] font-bold hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/20"
                 >

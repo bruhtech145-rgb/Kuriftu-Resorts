@@ -1238,7 +1238,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                   <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Guest Name</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Avg. Spend</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Points</th>
-                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Last Stay</th>
+                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Loyalty Tier</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">AI Segment</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
                 </tr>
@@ -1254,9 +1254,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                       <td className="px-4 py-3 font-bold text-slate-900 text-xs">{customer.full_name}</td>
                       <td className="px-4 py-3 text-slate-600 text-xs">ETB {Number(customer.average_spend || 0).toLocaleString()}</td>
                       <td className="px-4 py-3 text-slate-600 text-xs">{Number(customer.points_balance || 0).toLocaleString()} pts</td>
-                      <td className="px-4 py-3 text-slate-600 text-xs">
-                        {customer.last_stay_at || customer.date ? new Date(customer.last_stay_at || customer.date).toLocaleDateString() : 'N/A'}
-                      </td>
+                      <td className="px-4 py-3 text-slate-600 text-xs">{customer.loyalty_tier}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
                           customer.category?.includes('Premium') ? 'bg-purple-100 text-purple-600' :

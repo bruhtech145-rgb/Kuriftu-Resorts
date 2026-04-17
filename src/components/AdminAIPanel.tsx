@@ -159,27 +159,35 @@ export function AIInsightsPanel({ analysis, loading, onRefresh }: InsightsPanelP
       </div>
 
       {/* Market Segmentation */}
-      {analysis && analysis.customerSegments && (
+      {analysis && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
             <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
               <Users size={18} className="text-[#0066ff]" />
               AI Customer Segmentation
             </h3>
-            <div className="h-[250px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={segmentationData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                    cursor={{ fill: '#f8fafc' }}
-                  />
-                  <Bar dataKey="value" fill="#0066ff" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            {analysis.customerSegments && analysis.customerSegments.length > 0 ? (
+              <div className="h-[250px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={segmentationData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+                    <Tooltip 
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                      cursor={{ fill: '#f8fafc' }}
+                    />
+                    <Bar dataKey="value" fill="#0066ff" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-[250px] flex flex-col items-center justify-center text-slate-400 gap-2 border-2 border-dashed border-slate-50 rounded-3xl">
+                <Users size={32} className="opacity-20" />
+                <p className="text-sm">No member data available for segmentation</p>
+                <p className="text-[10px]">Ensure you have members with spend history in the database.</p>
+              </div>
+            )}
           </div>
 
           <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
@@ -187,35 +195,43 @@ export function AIInsightsPanel({ analysis, loading, onRefresh }: InsightsPanelP
               <PieChartIcon size={18} className="text-[#0066ff]" />
               Distribution
             </h3>
-            <div className="h-[200px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={segmentationData}
-                    innerRadius={60}
-                    outerRadius={80}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {segmentationData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-4 space-y-2">
-              {segmentationData.map((s, i) => (
-                <div key={i} className="flex items-center justify-between text-[10px]">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                    <span className="text-slate-600 truncate max-w-[120px]">{s.name}</span>
-                  </div>
-                  <span className="font-bold text-slate-900 whitespace-nowrap">{s.value} guests</span>
+            {analysis.customerSegments && analysis.customerSegments.length > 0 ? (
+              <>
+                <div className="h-[200px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={segmentationData}
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {segmentationData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
                 </div>
-              ))}
-            </div>
+                <div className="mt-4 space-y-2">
+                  {segmentationData.map((s, i) => (
+                    <div key={i} className="flex items-center justify-between text-[10px]">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                        <span className="text-slate-600 truncate max-w-[120px]">{s.name}</span>
+                      </div>
+                      <span className="font-bold text-slate-900 whitespace-nowrap">{s.value} guests</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="h-full flex items-center justify-center text-slate-300">
+                <PieChartIcon size={48} className="opacity-10" />
+              </div>
+            )}
           </div>
         </div>
       )}

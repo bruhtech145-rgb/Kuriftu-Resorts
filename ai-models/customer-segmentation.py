@@ -21,9 +21,13 @@ class CustomerSegmentationEngine:
         if df.empty:
             raise ValueError("Member data is empty.")
         
-        # Ensure numerical columns exist
-        if 'average_price' not in df.columns: df['average_price'] = 0
-        if 'points_balance' not in df.columns: df['points_balance'] = 0
+        # Ensure numerical columns exist, mapping from database field 'average_spend'
+        df['average_price'] = df.get('average_price', 0)
+        df['average_spend'] = df.get('average_spend', 0)
+        # Use average_spend if average_price is missing or 0
+        df['average_price'] = df['average_price'].mask(df['average_price'] == 0, df['average_spend'])
+        
+        df['points_balance'] = df.get('points_balance', 0).fillna(0)
         
         # Handle 'Recency' (days since last stay)
         if 'last_stay_at' in df.columns:

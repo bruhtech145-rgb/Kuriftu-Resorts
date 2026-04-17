@@ -1154,6 +1154,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     </div>
   );
 
+  const handleSeedTestData = async () => {
+    setIsAnalyzingMarketing(true);
+    try {
+      const testMembers = [
+        { full_name: 'Abinet Tesfaye', email: 'abinet@example.com', phone: '+251 911 111111', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true },
+        { full_name: 'Blen Kebede', email: 'blen@example.com', phone: '+251 911 222222', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true },
+        { full_name: 'Dawit Girma', email: 'dawit@example.com', phone: '+251 911 333333', loyalty_tier: 'Explorer', points_balance: 400, average_spend: 250.00, onboarding_completed: true },
+        { full_name: 'Eleni Tadesse', email: 'eleni@example.com', phone: '+251 911 444444', loyalty_tier: 'Summit', points_balance: 3000, average_spend: 800.00, onboarding_completed: true },
+        { full_name: 'Fasil Alemu', email: 'fasil@example.com', phone: '+251 911 555555', loyalty_tier: 'Explorer', points_balance: 50, average_spend: 50.00, onboarding_completed: true },
+        { full_name: 'Genet Wolde', email: 'genet@example.com', phone: '+251 911 666666', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true },
+        { full_name: 'Habtam Moges', email: 'habtam@example.com', phone: '+251 911 777777', loyalty_tier: 'Trekker', points_balance: 800, average_spend: 350.00, onboarding_completed: true },
+        { full_name: 'Ismael Idris', email: 'ismael@example.com', phone: '+251 911 888888', loyalty_tier: 'Summit', points_balance: 2000, average_spend: 600.00, onboarding_completed: true },
+        { full_name: 'Jemal Ahmed', email: 'jemal@example.com', phone: '+251 911 999999', loyalty_tier: 'Explorer', points_balance: 200, average_spend: 100.00, onboarding_completed: true },
+        { full_name: 'Kalkidan Bekele', email: 'kalkidan@example.com', phone: '+251 911 000000', loyalty_tier: 'Pinnacle', points_balance: 4500, average_spend: 950.00, onboarding_completed: true }
+      ];
+
+      const { error } = await supabase.from('members').upsert(testMembers, { onConflict: 'email' });
+      
+      if (error) {
+        if (error.code === '42501') {
+          throw new Error('Permission denied. Your Supabase RLS policy prevents public insertion into "members". Please use the SQL Editor in Supabase with the seed_members.sql file I created.');
+        }
+        throw error;
+      }
+      
+      alert('10 Test members seeded successfully!');
+      await runMarketingAI();
+    } catch (error: any) {
+      console.error('Error seeding test data:', error);
+      alert(error.message || 'Failed to seed test data. Check console for details.');
+    } finally {
+      setIsAnalyzingMarketing(false);
+    }
+  };
+
   const renderMarketing = () => (
     <div className="space-y-6">
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 sm:p-6">
@@ -1162,14 +1197,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             <h3 className="text-lg font-bold text-slate-900">Customer Segmentation AI</h3>
             <p className="text-sm text-slate-400">Targeted marketing insights based on spend and loyalty</p>
           </div>
-          <button 
-            onClick={runMarketingAI}
-            disabled={isAnalyzingMarketing}
-            className="bg-[#0066ff] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-600 transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20"
-          >
-            <Zap size={16} className={isAnalyzingMarketing ? 'animate-pulse' : ''} />
-            {isAnalyzingMarketing ? 'Analyzing...' : 'Run Segmentation AI'}
-          </button>
+          <div className="flex gap-3">
+            <button 
+              onClick={handleSeedTestData}
+              disabled={isAnalyzingMarketing}
+              className="bg-slate-100 text-slate-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-200 transition-all disabled:opacity-50"
+            >
+              <Plus size={16} />
+              Seed Test Members
+            </button>
+            <button 
+              onClick={runMarketingAI}
+              disabled={isAnalyzingMarketing}
+              className="bg-[#0066ff] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-600 transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20"
+            >
+              <Zap size={16} className={isAnalyzingMarketing ? 'animate-pulse' : ''} />
+              {isAnalyzingMarketing ? 'Analyzing...' : 'Run Segmentation AI'}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">

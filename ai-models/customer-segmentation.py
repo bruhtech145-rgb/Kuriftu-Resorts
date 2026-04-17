@@ -21,17 +21,18 @@ class CustomerSegmentationEngine:
         if df.empty:
             raise ValueError("Member data is empty.")
         
-        # Ensure numerical columns exist, mapping from database field 'average_spend'
-        df['average_price'] = df.get('average_price', 0)
-        df['average_spend'] = df.get('average_spend', 0)
+        # Ensure numerical columns exist, mapping from database fields and forcing numeric
+        df['average_price'] = pd.to_numeric(df.get('average_price', 0), errors='coerce').fillna(0)
+        df['average_spend'] = pd.to_numeric(df.get('average_spend', 0), errors='coerce').fillna(0)
+        
         # Use average_spend if average_price is missing or 0
         df['average_price'] = df['average_price'].mask(df['average_price'] == 0, df['average_spend'])
         
-        df['points_balance'] = df.get('points_balance', 0).fillna(0)
+        df['points_balance'] = pd.to_numeric(df.get('points_balance', 0), errors='coerce').fillna(0)
         
         # Handle 'Recency' (days since last stay)
         if 'last_stay_at' in df.columns:
-            df['last_stay_at'] = pd.to_datetime(df['last_stay_at'])
+            df['last_stay_at'] = pd.to_datetime(df['last_stay_at'], errors='coerce')
             # Calculate days since last stay from 'now'
             # If date is missing, assume a long time ago (e.g. 365 days)
             now = pd.Timestamp.now()

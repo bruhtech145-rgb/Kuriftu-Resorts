@@ -1157,17 +1157,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const handleSeedTestData = async () => {
     setIsAnalyzingMarketing(true);
     try {
+      const today = new Date();
       const testMembers = [
-        { full_name: 'Abinet Tesfaye', email: 'abinet@example.com', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true },
-        { full_name: 'Blen Kebede', email: 'blen@example.com', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true },
-        { full_name: 'Dawit Girma', email: 'dawit@example.com', loyalty_tier: 'Explorer', points_balance: 400, average_spend: 250.00, onboarding_completed: true },
-        { full_name: 'Eleni Tadesse', email: 'eleni@example.com', loyalty_tier: 'Summit', points_balance: 3000, average_spend: 800.00, onboarding_completed: true },
-        { full_name: 'Fasil Alemu', email: 'fasil@example.com', loyalty_tier: 'Explorer', points_balance: 50, average_spend: 50.00, onboarding_completed: true },
-        { full_name: 'Genet Wolde', email: 'genet@example.com', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true },
-        { full_name: 'Habtam Moges', email: 'habtam@example.com', loyalty_tier: 'Trekker', points_balance: 800, average_spend: 350.00, onboarding_completed: true },
-        { full_name: 'Ismael Idris', email: 'ismael@example.com', loyalty_tier: 'Summit', points_balance: 2000, average_spend: 600.00, onboarding_completed: true },
-        { full_name: 'Jemal Ahmed', email: 'jemal@example.com', loyalty_tier: 'Explorer', points_balance: 200, average_spend: 100.00, onboarding_completed: true },
-        { full_name: 'Kalkidan Bekele', email: 'kalkidan@example.com', loyalty_tier: 'Pinnacle', points_balance: 4500, average_spend: 950.00, onboarding_completed: true }
+        { full_name: 'Abinet Tesfaye', email: 'abinet@example.com', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 15 * 86400000).toISOString() },
+        { full_name: 'Blen Kebede', email: 'blen@example.com', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 2 * 86400000).toISOString() },
+        { full_name: 'Dawit Girma', email: 'dawit@example.com', loyalty_tier: 'Explorer', points_balance: 400, average_spend: 250.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 45 * 86400000).toISOString() },
+        { full_name: 'Eleni Tadesse', email: 'eleni@example.com', loyalty_tier: 'Summit', points_balance: 3000, average_spend: 800.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 10 * 86400000).toISOString() },
+        { full_name: 'Fasil Alemu', email: 'fasil@example.com', loyalty_tier: 'Explorer', points_balance: 50, average_spend: 50.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 120 * 86400000).toISOString() },
+        { full_name: 'Genet Wolde', email: 'genet@example.com', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 5 * 86400000).toISOString() },
+        { full_name: 'Habtam Moges', email: 'habtam@example.com', loyalty_tier: 'Trekker', points_balance: 800, average_spend: 350.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 60 * 86400000).toISOString() },
+        { full_name: 'Ismael Idris', email: 'ismael@example.com', loyalty_tier: 'Summit', points_balance: 2000, average_spend: 600.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 20 * 86400000).toISOString() },
+        { full_name: 'Jemal Ahmed', email: 'jemal@example.com', loyalty_tier: 'Explorer', points_balance: 200, average_spend: 100.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 180 * 86400000).toISOString() },
+        { full_name: 'Kalkidan Bekele', email: 'kalkidan@example.com', loyalty_tier: 'Pinnacle', points_balance: 4500, average_spend: 950.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 8 * 86400000).toISOString() }
       ];
 
       const { error } = await supabase.from('members').upsert(testMembers, { onConflict: 'email' });
@@ -1238,21 +1239,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                   <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Guest Name</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Avg. Spend</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Points</th>
+                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Last Stay</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">AI Segment</th>
                   <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {isAnalyzingMarketing ? (
-                  <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-400 font-bold"><RefreshCw size={24} className="animate-spin mx-auto mb-2" /> Running K-Means Clustering...</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-400 font-bold"><RefreshCw size={24} className="animate-spin mx-auto mb-2" /> Running K-Means Clustering...</td></tr>
                 ) : segmentedCustomers.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-400 font-bold">No data processed. Click Run Segmentation AI.</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-400 font-bold">No data processed. Click Run Segmentation AI.</td></tr>
                 ) : (
                   segmentedCustomers.map((customer) => (
                     <tr key={customer.id} className="hover:bg-white transition-colors group">
                       <td className="px-4 py-3 font-bold text-slate-900 text-xs">{customer.full_name}</td>
                       <td className="px-4 py-3 text-slate-600 text-xs">ETB {Number(customer.average_spend || 0).toLocaleString()}</td>
                       <td className="px-4 py-3 text-slate-600 text-xs">{Number(customer.points_balance || 0).toLocaleString()} pts</td>
+                      <td className="px-4 py-3 text-slate-600 text-xs">
+                        {customer.last_stay_at || customer.date ? new Date(customer.last_stay_at || customer.date).toLocaleDateString() : 'N/A'}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
                           customer.category?.includes('Premium') ? 'bg-purple-100 text-purple-600' :

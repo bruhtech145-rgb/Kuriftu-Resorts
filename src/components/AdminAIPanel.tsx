@@ -189,10 +189,11 @@ export function AIInsightsPanel({ analysis, loading, onRefresh }: InsightsPanelP
                 <button 
                   onClick={async () => {
                     const { supabase } = await import('../lib/supabase');
+                    const today = new Date();
                     const testMembers = [
-                      { full_name: 'Abinet Tesfaye', email: 'abinet@example.com', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true },
-                      { full_name: 'Blen Kebede', email: 'blen@example.com', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true },
-                      { full_name: 'Genet Wolde', email: 'genet@example.com', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true }
+                      { full_name: 'Abinet Tesfaye', email: 'abinet@example.com', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 15 * 86400000).toISOString() },
+                      { full_name: 'Blen Kebede', email: 'blen@example.com', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 2 * 86400000).toISOString() },
+                      { full_name: 'Genet Wolde', email: 'genet@example.com', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true, last_stay_at: new Date(today.getTime() - 5 * 86400000).toISOString() }
                     ];
                     const { error } = await supabase.from('members').upsert(testMembers, { onConflict: 'email' });
                     if (error) alert('Permission Denied: Please use the SQL Editor to run seed_members.sql');

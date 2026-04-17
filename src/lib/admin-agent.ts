@@ -49,7 +49,8 @@ async function runCustomerSegmentation(members: any[]) {
     const formattedMembers = members.map(m => ({
       id: m.id,
       average_price: m.average_spend || 0,
-      points_balance: m.points_balance || 0
+      points_balance: m.points_balance || 0,
+      last_stay_at: m.last_stay_at || m.date || null
     }));
 
     const response = await fetch('/api/segment-customers', {

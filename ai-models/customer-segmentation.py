@@ -3,6 +3,7 @@ import sys
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+from datetime import datetime
 
 class CustomerSegmentationEngine:
     def __init__(self, n_clusters=3):
@@ -15,19 +16,46 @@ class CustomerSegmentationEngine:
     def load_and_prep_data(self, input_data):
         """
         Loads the data from a dictionary and prepares it for clustering.
-        The data should be in the form of a list of dictionaries with 'id', 'average_price', and 'points_balance'.
         """
         df = pd.DataFrame(input_data['members'])
         if df.empty:
             raise ValueError("Member data is empty.")
+        
+        # Ensure numerical columns exist
+        if 'average_price' not in df.columns: df['average_price'] = 0
+        if 'points_balance' not in df.columns: df['points_balance'] = 0
+        
+        # Handle 'Recency' (days since last stay)
+        if 'last_stay_at' in df.columns:
+            df['last_stay_at'] = pd.to_datetime(df['last_stay_at'])
+            # Calculate days since last stay from 'now'
+            # If date is missing, assume a long time ago (e.g. 365 days)
+            now = pd.Timestamp.now()
+            df['recency'] = (now - df['last_stay_at']).dt.days
+            df['recency'] = df['recency'].fillna(365) # Fallback for new members
+        else:
+            # Default to a neutral value if column doesn't exist yet
+            df['recency'] = 0
+
         return df
 
     def perform_clustering(self, df):
         """
         Performs K-Means clustering on the given dataframe.
+        Features: Monetary (average_price), Frequency (points_balance), Recency (days since stay)
         """
         # Feature selection
-        features = df[['average_price', 'points_balance']]
+        # We invert recency because lower days means a better customer in typical RFM
+        features_list = ['average_price', 'points_balance']
+        if 'last_stay_at' in df.columns:
+            # Scale recency separately or transform it
+            # We use 1/(recency + 1) or similar, but for K-Means we can just scale it.
+            # Note: Higher recency is worse, so we can use (max_recency - recency)
+            max_r = df['recency'].max()
+            df['recency_score'] = max_r - df['recency']
+            features_list.append('recency_score')
+
+        features = df[features_list]
         
         # Scaling
         scaled_features = self.scaler.fit_transform(features)
@@ -60,7 +88,11 @@ class CustomerSegmentationEngine:
         df['category'] = df['cluster'].apply(map_cluster_to_category)
 
         # Prepare result
-        result = df[['id', 'average_price', 'points_balance', 'category']].to_dict(orient='records')
+        output_cols = ['id', 'average_price', 'points_balance', 'category']
+        if 'last_stay_at' in df.columns:
+            output_cols.append('recency')
+            
+        result = df[output_cols].to_dict(orient='records')
         return json.dumps({"segmented_customers": result})
 
 if __name__ == "__main__":

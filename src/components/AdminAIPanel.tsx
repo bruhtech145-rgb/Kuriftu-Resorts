@@ -190,9 +190,9 @@ export function AIInsightsPanel({ analysis, loading, onRefresh }: InsightsPanelP
                   onClick={async () => {
                     const { supabase } = await import('../lib/supabase');
                     const testMembers = [
-                      { full_name: 'Abinet Tesfaye', email: 'abinet@example.com', phone: '+251 911 111111', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true },
-                      { full_name: 'Blen Kebede', email: 'blen@example.com', phone: '+251 911 222222', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true },
-                      { full_name: 'Genet Wolde', email: 'genet@example.com', phone: '+251 911 666666', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true }
+                      { full_name: 'Abinet Tesfaye', email: 'abinet@example.com', loyalty_tier: 'Trekker', points_balance: 1200, average_spend: 450.00, onboarding_completed: true },
+                      { full_name: 'Blen Kebede', email: 'blen@example.com', loyalty_tier: 'Pinnacle', points_balance: 5500, average_spend: 1200.00, onboarding_completed: true },
+                      { full_name: 'Genet Wolde', email: 'genet@example.com', loyalty_tier: 'Pinnacle', points_balance: 10000, average_spend: 1500.00, onboarding_completed: true }
                     ];
                     const { error } = await supabase.from('members').upsert(testMembers, { onConflict: 'email' });
                     if (error) alert('Permission Denied: Please use the SQL Editor to run seed_members.sql');

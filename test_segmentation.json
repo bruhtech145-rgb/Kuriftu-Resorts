@@ -1,0 +1,14 @@
+{
+  "members": [
+    {"id": "1", "average_price": 450.50, "points_balance": 8500},
+    {"id": "2", "average_price": 220.00, "points_balance": 3200},
+    {"id": "3", "average_price": 185.75, "points_balance": 2800},
+    {"id": "4", "average_price": 85.00, "points_balance": 450},
+    {"id": "5", "average_price": 45.30, "points_balance": 120},
+    {"id": "6", "average_price": 310.00, "points_balance": 12500},
+    {"id": "7", "average_price": 380.00, "points_balance": 5400},
+    {"id": "8", "average_price": 140.00, "points_balance": 1500},
+    {"id": "9", "average_price": 115.00, "points_balance": 900},
+    {"id": "10", "average_price": 550.00, "points_balance": 15000}
+  ]
+}

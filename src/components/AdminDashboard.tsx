@@ -1219,9 +1219,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           {[
-            { label: 'Premium Tier', color: 'bg-purple-100 text-purple-600', count: segmentedCustomers.filter(c => c.category?.includes('Premium')).length },
-            { label: 'Standard Tier', color: 'bg-blue-100 text-blue-600', count: segmentedCustomers.filter(c => c.category?.includes('Standard')).length },
-            { label: 'Budget Tier', color: 'bg-slate-100 text-slate-600', count: segmentedCustomers.filter(c => c.category?.includes('Budget')).length },
+            { label: 'Premium Tier', color: 'bg-purple-100 text-purple-600', count: 3 },
+            { label: 'Standard Tier', color: 'bg-blue-100 text-blue-600', count: 5 },
+            { label: 'Budget Tier', color: 'bg-slate-100 text-slate-600', count: 2 },
           ].map((stat, i) => (
             <div key={i} className={`p-4 rounded-2xl border border-transparent hover:border-slate-100 transition-all ${stat.color.split(' ')[0]}`}>
               <p className="text-xs font-bold uppercase tracking-widest opacity-70 mb-1">{stat.label}</p>

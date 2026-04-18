@@ -1197,32 +1197,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             <h3 className="text-lg font-bold text-slate-900">Customer Segmentation AI</h3>
             <p className="text-sm text-slate-400">Targeted marketing insights based on spend and loyalty</p>
           </div>
-          <button 
-            onClick={runMarketingAI}
-            disabled={isAnalyzingMarketing}
-            className="bg-[#0066ff] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-600 transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20"
-          >
-            <Zap size={16} className={isAnalyzingMarketing ? 'animate-pulse' : ''} />
-            {isAnalyzingMarketing ? 'Analyzing...' : 'Run Segmentation AI'}
-          </button>
+          <div className="flex gap-3">
+            <button 
+              onClick={handleSeedTestData}
+              disabled={isAnalyzingMarketing}
+              className="bg-slate-100 text-slate-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-200 transition-all disabled:opacity-50"
+            >
+              <Plus size={16} />
+              Seed Test Members
+            </button>
+            <button 
+              onClick={runMarketingAI}
+              disabled={isAnalyzingMarketing}
+              className="bg-[#0066ff] text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-blue-600 transition-all disabled:opacity-50 shadow-lg shadow-blue-500/20"
+            >
+              <Zap size={16} className={isAnalyzingMarketing ? 'animate-pulse' : ''} />
+              {isAnalyzingMarketing ? 'Analyzing...' : 'Run Segmentation AI'}
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-            <div className="p-6 rounded-3xl bg-purple-50 border border-purple-100">
-                <p className="text-xs font-bold uppercase tracking-widest text-purple-600 mb-1">Premium Tier</p>
-                <h4 className="text-4xl font-bold text-purple-900">3 <span className="text-sm font-normal opacity-70">Guests</span></h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          {[
+            { label: 'Premium Tier', color: 'bg-purple-100 text-purple-600', count: segmentedCustomers.filter(c => c.category?.includes('Premium')).length },
+            { label: 'Standard Tier', color: 'bg-blue-100 text-blue-600', count: segmentedCustomers.filter(c => c.category?.includes('Standard')).length },
+            { label: 'Budget Tier', color: 'bg-slate-100 text-slate-600', count: segmentedCustomers.filter(c => c.category?.includes('Budget')).length },
+          ].map((stat, i) => (
+            <div key={i} className={`p-4 rounded-2xl border border-transparent hover:border-slate-100 transition-all ${stat.color.split(' ')[0]}`}>
+              <p className="text-xs font-bold uppercase tracking-widest opacity-70 mb-1">{stat.label}</p>
+              <h4 className="text-2xl font-bold">{stat.count} <span className="text-sm font-normal opacity-70">Guests</span></h4>
             </div>
-            <div className="p-6 rounded-3xl bg-blue-50 border border-blue-100">
-                <p className="text-xs font-bold uppercase tracking-widest text-blue-600 mb-1">Standard Tier</p>
-                <h4 className="text-4xl font-bold text-blue-900">5 <span className="text-sm font-normal opacity-70">Guests</span></h4>
-            </div>
-            <div className="p-6 rounded-3xl bg-slate-100 border border-slate-200">
-                <p className="text-xs font-bold uppercase tracking-widest text-slate-600 mb-1">Budget Tier</p>
-                <h4 className="text-4xl font-bold text-slate-900">2 <span className="text-sm font-normal opacity-70">Guests</span></h4>
-            </div>
+          ))}
         </div>
 
-        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 overflow-hidden mb-12">
+        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead>
@@ -1264,33 +1272,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               </tbody>
             </table>
           </div>
-        </div>
-
-        <div className="bg-slate-50 p-8 rounded-3xl border border-slate-100">
-            <div className="flex items-center gap-4 mb-8">
-                <div className="w-16 h-16 bg-[#0066ff] rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-500/20">
-                    <Sparkles size={32} />
-                </div>
-                <div>
-                    <h3 className="text-xl font-bold text-slate-900">AI-Powered Marketing Strategy</h3>
-                    <p className="text-sm text-slate-500">Based on your current guest segmentation analysis</p>
-                </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                    <p className="font-bold text-slate-900 mb-2">For Premium Guests</p>
-                    <p className="text-sm text-slate-500">Host exclusive private events or offer personalized spa concierge services to maintain high loyalty and lifetime value.</p>
-                </div>
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                    <p className="font-bold text-slate-900 mb-2">For Standard Guests</p>
-                    <p className="text-sm text-slate-500">Introduce activity bundles and mid-week stay incentives to increase occupancy during non-peak periods.</p>
-                </div>
-                <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
-                    <p className="font-bold text-slate-900 mb-2">For Budget Guests</p>
-                    <p className="text-sm text-slate-500">Offer value-driven weekend getaway packages with complimentary breakfasts or late checkout options.</p>
-                </div>
-            </div>
         </div>
       </div>
     </div>

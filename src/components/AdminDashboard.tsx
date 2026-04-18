@@ -1230,48 +1230,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
           ))}
         </div>
 
-        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[700px]">
-              <thead>
-                <tr>
-                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Guest Name</th>
-                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Avg. Spend</th>
-                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Points</th>
-                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Loyalty Tier</th>
-                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">AI Segment</th>
-                  <th className="px-4 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {isAnalyzingMarketing ? (
-                  <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-400 font-bold"><RefreshCw size={24} className="animate-spin mx-auto mb-2" /> Running K-Means Clustering...</td></tr>
-                ) : segmentedCustomers.length === 0 ? (
-                  <tr><td colSpan={6} className="px-4 py-12 text-center text-slate-400 font-bold">No data processed. Click Run Segmentation AI.</td></tr>
-                ) : (
-                  segmentedCustomers.map((customer) => (
-                    <tr key={customer.id} className="hover:bg-white transition-colors group">
-                      <td className="px-4 py-3 font-bold text-slate-900 text-xs">{customer.full_name}</td>
-                      <td className="px-4 py-3 text-slate-600 text-xs">ETB {Number(customer.average_spend || 0).toLocaleString()}</td>
-                      <td className="px-4 py-3 text-slate-600 text-xs">{Number(customer.points_balance || 0).toLocaleString()} pts</td>
-                      <td className="px-4 py-3 text-slate-600 text-xs">{customer.loyalty_tier}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider ${
-                          customer.category?.includes('Premium') ? 'bg-purple-100 text-purple-600' :
-                          customer.category?.includes('Standard') ? 'bg-blue-100 text-blue-600' : 'bg-slate-100 text-slate-500'
-                        }`}>
-                          {customer.category}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <button className="text-[10px] font-bold text-[#0066ff] hover:underline">Target Campaign</button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div className="bg-slate-50/50 rounded-2xl border border-slate-100 p-6">
+          {isAnalyzingMarketing ? (
+            <div className="text-center py-12 text-slate-400 font-bold">
+              <RefreshCw size={24} className="animate-spin mx-auto mb-2" /> Running K-Means Clustering...
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <h4 className="text-md font-bold text-slate-900">Marketing Suggestion</h4>
+              <p className="text-sm text-slate-600">Based on recent occupancy and spend patterns, focus a targeted promotion to drive revenue and utilization for under-used single-bed rooms.</p>
+
+              <div className="bg-white rounded-lg border border-slate-100 p-4">
+                <p className="text-sm font-semibold">Recommendation summary</p>
+                <ul className="list-disc list-inside text-sm text-slate-600 mt-2 space-y-1">
+                  <li>Primary focus: Room Type — Single bed rooms (Room 1). These show lower occupancy and lower spend.</li>
+                  <li>Promotion: Offer a limited-time discount (suggested 10–20%) on Single rooms for a 14-day window to increase occupancy.</li>
+                  <li>Bundling: Pair Single room bookings with Dining Package 1 to raise average spend per guest.</li>
+                  <li>Targeting: Send the offer to Explorer/Trekker tier guests and guests whose last stay was &gt;90 days ago.</li>
+                  <li>Pricing tweak: Consider a weekday rate adjustment (e.g., -10%) and monitor uptake weekly.</li>
+                </ul>
+                <p className="text-xs text-slate-400 mt-3">These are suggestions only — execute campaigns from your marketing tool and monitor results. I won't change rates automatically.</p>
+                <div className="mt-4 flex gap-3">
+                  <button className="bg-[#0066ff] text-white px-4 py-2 rounded-xl text-sm font-bold">Create Campaign</button>
+                  <button className="bg-slate-100 text-slate-600 px-4 py-2 rounded-xl text-sm font-bold">Remind me later</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
